@@ -11,6 +11,17 @@ include_directories(
 set(ENABLED_HEADSET_DRIVERS)
 set(ENABLED_DRIVERS)
 
+set(ILLIXR_SOURCE_FILES
+	illixr/illixr_device.c
+	illixr/illixr_interface.h
+	illixr/illixr_prober.c
+	)
+
+# Use OBJECT to not create a archive, since it just gets in the way.
+add_library(drv_illixr OBJECT ${ILLIXR_SOURCE_FILES})
+list(APPEND ENABLED_HEADSET_DRIVERS illixr)
+
+
 if(BUILD_DRIVER_DUMMY)
 	set(DUMMY_SOURCE_FILES
 		dummy/dummy_hmd.c

@@ -18,6 +18,11 @@ set(PROBER_SOURCE_FILES
 	p_tracking.c
 	)
 
+list(APPEND PROBER_SOURCE_FILES
+	p_illixr.c
+	)
+
+
 # Add libudev
 if(BUILD_WITH_LIBUDEV)
 	list(APPEND PROBER_SOURCE_FILES

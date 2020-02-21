@@ -332,6 +332,12 @@ initialize(struct prober *p, struct xrt_prober_entry_lists *lists)
 		return -1;
 	}
 
+	ret = p_illixr_init(p);
+	if (ret != 0) {
+		teardown(p);
+		return -1;
+	}
+
 #ifdef XRT_HAVE_LIBUSB
 	ret = p_libusb_init(p);
 	if (ret != 0) {
@@ -436,6 +442,8 @@ teardown(struct prober *p)
 
 	teardown_devices(p);
 
+	p_illixr_teardown(p);
+
 #ifdef XRT_HAVE_LIBUVC
 	p_libuvc_teardown(p);
 #endif
@@ -460,6 +468,12 @@ probe(struct xrt_prober *xp)
 
 	// Free old list first.
 	teardown_devices(p);
+
+	ret = p_illixr_probe(p);
+	if (ret != 0) {
+		P_ERROR(p, "Failed to enumerate illixr devices\n");
+		return -1;
+	}
 
 #ifdef XRT_HAVE_LIBUDEV
 	ret = p_udev_probe(p);

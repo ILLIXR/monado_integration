@@ -204,6 +204,15 @@ p_tracking_init(struct prober *p);
 void
 p_tracking_teardown(struct prober *p);
 
+int
+p_illixr_init(struct prober *p);
+
+void
+p_illixr_teardown(struct prober *p);
+
+int
+p_illixr_probe(struct prober *p);
+
 #ifdef XRT_HAVE_LIBUSB
 int
 p_libusb_init(struct prober *p);
