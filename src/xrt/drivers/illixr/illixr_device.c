@@ -53,6 +53,42 @@ illixr_hmd(struct xrt_device *xdev)
 	return (struct illixr_hmd *)xdev;
 }
 
+
+/*
+ * Parses fake input file
+ * the file should list desired poses in format:
+ * f1, f2, f3, f4\n  // orientation quaternion
+ * f1, f2, f3 // position
+ */
+
+static const char* test_input = "/tmp/illixr_test_input.txt";
+
+static struct xrt_pose
+read_pose_from_file(const char* filename) {
+	struct xrt_pose default_pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+	struct xrt_pose pose;
+	FILE *file = fopen(filename, "r");
+	if (file == NULL) {
+		return default_pose;
+	}
+	int match = fscanf(file, "%f, %f, %f, %f\n%f, %f, %f", 
+		&(pose.orientation.x),
+		&(pose.orientation.y),
+		&(pose.orientation.z),
+		&(pose.orientation.w),
+		&(pose.position.x),
+		&(pose.position.y),
+		&(pose.position.z));
+	if (match != 7) {
+		fprintf(stderr, "fscanf failed\n");
+		fclose(file);
+		return default_pose;
+	}
+	fclose(file);
+	return pose;
+
+}
+
 DEBUG_GET_ONCE_BOOL_OPTION(illixr_spew, "illixr_PRINT_SPEW", false)
 DEBUG_GET_ONCE_BOOL_OPTION(illixr_debug, "illixr_PRINT_DEBUG", false)
 
@@ -115,7 +151,8 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 	int64_t now = time_state_get_now(timekeeping);
 
 	*out_timestamp = now;
-	out_relation->pose = dh->pose;
+	// out_relation->pose = dh->pose;
+	out_relation->pose = read_pose_from_file(test_input);
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 	    XRT_SPACE_RELATION_POSITION_VALID_BIT);
@@ -127,23 +164,7 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
                         uint32_t view_index,
                         struct xrt_pose *out_pose)
 {
-	struct xrt_pose pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
-	bool adjust = view_index == 0;
-
-	pose.position.x = eye_relation->x / 2.0f;
-	pose.position.y = eye_relation->y / 2.0f;
-	pose.position.z = eye_relation->z / 2.0f;
-
-	// Adjust for left/right while also making sure there aren't any -0.f.
-	if (pose.position.x > 0.0f && adjust) {
-		pose.position.x = -pose.position.x;
-	}
-	if (pose.position.y > 0.0f && adjust) {
-		pose.position.y = -pose.position.y;
-	}
-	if (pose.position.z > 0.0f && adjust) {
-		pose.position.z = -pose.position.z;
-	}
+	struct xrt_pose pose = read_pose_from_file(test_input);
 
 	*out_pose = pose;
 }
