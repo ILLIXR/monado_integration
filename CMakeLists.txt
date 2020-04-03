@@ -30,7 +30,7 @@ find_package(OpenCV COMPONENTS core calib3d highgui imgproc imgcodecs features2d
 find_package(Libusb1)
 find_package(JPEG)
 find_package(realsense2)
-find_package(SDL2)
+#find_package(SDL2)
 find_package(Threads)
 find_package(ZLIB)
 
@@ -76,7 +76,7 @@ cmake_dependent_option(BUILD_WITH_RS "Enable RealSense device driver" ON "realse
 option(BUILD_WITH_DUMMY "Enable dummy driver" ON)
 cmake_dependent_option(BUILD_WITH_VIVE "Enable Vive driver" ON "ZLIB_FOUND" OFF)
 cmake_dependent_option(BUILD_WITH_OPENHMD "Enable OpenHMD driver" ON "OPENHMD_FOUND" OFF)
-cmake_dependent_option(BUILD_WITH_SDL2 "Enable SDL2 based test application" ON "SDL2_FOUND" OFF)
+#cmake_dependent_option(BUILD_WITH_SDL2 "Enable SDL2 based test application" ON "SDL2_FOUND" OFF)
 
 # These all use the Monado internal hid wrapper which is assumed to be available.
 option(BUILD_WITH_HDK "Enable HDK driver" ON)
@@ -84,9 +84,17 @@ option(BUILD_WITH_PSMV "Enable Playstation Move driver" ON)
 option(BUILD_WITH_HYDRA "Enable Hydra driver" ON)
 option(BUILD_WITH_NS "Enable North Star driver" ON)
 
+set(ILLIXR_PATH "" CACHE PATH "Path to Illixr headers")
+
 ###
 # Flags
 ###
+
+if (ILLIXR_PATH)
+	set(BUILD_WITH_ILLIXR TRUE)
+	set(BUILD_DRIVER_ILLIXR TRUE)
+	add_definitions(-DXRT_HAVE_ILLIXR)
+endif()
 
 if(BUILD_WITH_LIBUDEV)
 	add_definitions(-DXRT_HAVE_LIBUDEV)
@@ -128,7 +136,8 @@ if(BUILD_WITH_SDL2)
 	endif()
 
 	# SDL2 based gui
-	set(BUILD_TARGET_GUI TRUE)
+	#	set(BUILD_TARGET_GUI TRUE)
+	# set(BUILD_TARGET_GUI FALSE)
 endif()
 
 if(BUILD_WITH_DUMMY)

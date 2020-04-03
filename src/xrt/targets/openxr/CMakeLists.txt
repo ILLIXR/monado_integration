@@ -53,6 +53,8 @@ target_link_libraries(${RUNTIME_TARGET} PUBLIC
 	${XCB_LIBRARIES}
 	${WAYLAND_LIBRARIES}
 	OpenGL::GLX
+	${CMAKE_DL_LIBS}
+	"glfw"
 	)
 
 if(DRIVER_OBJECTS)

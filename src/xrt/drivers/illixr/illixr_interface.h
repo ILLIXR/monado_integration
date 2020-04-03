@@ -38,7 +38,7 @@ illixr_create_auto_prober(void);
  * @ingroup drv_illixr
  */
 struct xrt_device *
-illixr_hmd_create(void);
+illixr_hmd_create(const char *path, const char *comp);
 
 
 /*!

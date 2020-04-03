@@ -174,6 +174,10 @@ struct xrt_prober
 	bool (*can_open)(struct xrt_prober *xp,
 	                 struct xrt_prober_device *xpdev);
 	void (*destroy)(struct xrt_prober **xp_ptr);
+	const char *(*get_illixr_path)(struct xrt_prober *xp,
+	                               struct xrt_prober_device *xpdev);
+	const char *(*get_illixr_components)(struct xrt_prober *xp,
+	                                     struct xrt_prober_device *xpdev);
 };
 
 /*!
@@ -209,6 +213,30 @@ xrt_prober_select(struct xrt_prober *xp,
                   size_t num_xdevs)
 {
 	return xp->select(xp, xdevs, num_xdevs);
+}
+
+/*!
+ * Helper function for @ref xrt_prober::get_illixr_path.
+ *
+ * @ingroup xrt_iface
+ */
+XRT_MAYBE_UNUSED static inline const char *
+xrt_prober_get_illixr_path(struct xrt_prober *xp,
+                           struct xrt_prober_device *xpdev)
+{
+	return xp->get_illixr_path(xp, xpdev);
+}
+
+/*!
+ * Helper function for @ref xrt_prober::get_illixr_components.
+ *
+ * @ingroup xrt_iface
+ */
+XRT_MAYBE_UNUSED static inline const char *
+xrt_prober_get_illixr_components(struct xrt_prober *xp,
+                                 struct xrt_prober_device *xpdev)
+{
+	return xp->get_illixr_components(xp, xpdev);
 }
 
 /*!

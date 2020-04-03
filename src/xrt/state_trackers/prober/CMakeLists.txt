@@ -18,10 +18,13 @@ set(PROBER_SOURCE_FILES
 	p_tracking.c
 	)
 
-list(APPEND PROBER_SOURCE_FILES
-	p_illixr.c
-	)
+# Add Illixr
 
+if (BUILD_WITH_ILLIXR)
+	list(APPEND PROBER_SOURCE_FILES
+		p_illixr.c
+		)
+endif()
 
 # Add libudev
 if(BUILD_WITH_LIBUDEV)

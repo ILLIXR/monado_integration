@@ -120,6 +120,13 @@ struct prober_device
 	size_t num_hidraws;
 	struct prober_hidraw *hidraws;
 #endif
+
+#ifdef XRT_HAVE_ILLIXR
+	struct {
+		const char *path;
+		const char *comp;
+	} illixr;
+#endif
 };
 
 struct prober

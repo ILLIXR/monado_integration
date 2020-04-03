@@ -7,13 +7,14 @@
  * @ingroup drv_illixr
  */
 
-
 #include <math.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <dlfcn.h>
+#include <alloca.h>
 
 #include "math/m_api.h"
 #include "xrt/xrt_device.h"
@@ -23,6 +24,8 @@
 #include "util/u_device.h"
 #include "util/u_time.h"
 #include "util/u_distortion_mesh.h"
+
+#include "illixr_component.h"
 
 /*
  *
@@ -38,6 +41,16 @@ struct illixr_hmd
 
 	bool print_spew;
 	bool print_debug;
+
+	void *illixr_lib;
+	struct illixr_operation_t {
+		int (*init)();
+		void (*load_component)(const char *path);
+		void (*attach_component)(void *f);
+		void (*run)(void);
+		void (*join)(void);
+		void (*destroy)(void);
+	} ops;
 };
 
 
@@ -60,34 +73,6 @@ illixr_hmd(struct xrt_device *xdev)
  * f1, f2, f3, f4\n  // orientation quaternion
  * f1, f2, f3 // position
  */
-
-static const char* test_input = "/tmp/illixr_test_input.txt";
-
-static struct xrt_pose
-read_pose_from_file(const char* filename) {
-	struct xrt_pose default_pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
-	struct xrt_pose pose;
-	FILE *file = fopen(filename, "r");
-	if (file == NULL) {
-		return default_pose;
-	}
-	int match = fscanf(file, "%f, %f, %f, %f\n%f, %f, %f", 
-		&(pose.orientation.x),
-		&(pose.orientation.y),
-		&(pose.orientation.z),
-		&(pose.orientation.w),
-		&(pose.position.x),
-		&(pose.position.y),
-		&(pose.position.z));
-	if (match != 7) {
-		fprintf(stderr, "fscanf failed\n");
-		fclose(file);
-		return default_pose;
-	}
-	fclose(file);
-	return pose;
-
-}
 
 DEBUG_GET_ONCE_BOOL_OPTION(illixr_spew, "illixr_PRINT_SPEW", false)
 DEBUG_GET_ONCE_BOOL_OPTION(illixr_debug, "illixr_PRINT_DEBUG", false)
@@ -141,10 +126,8 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
                            int64_t *out_timestamp,
                            struct xrt_space_relation *out_relation)
 {
-	struct illixr_hmd *dh = illixr_hmd(xdev);
-
 	if (name != XRT_INPUT_GENERIC_HEAD_POSE) {
-		DH_ERROR(dh, "unknown input name");
+		DH_ERROR(illixr_hmd(xdev), "unknown input name");
 		return;
 	}
 
@@ -152,7 +135,7 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 
 	*out_timestamp = now;
 	// out_relation->pose = dh->pose;
-	out_relation->pose = read_pose_from_file(test_input);
+	out_relation->pose = illixr_read_pose();
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 	    XRT_SPACE_RELATION_POSITION_VALID_BIT);
@@ -164,13 +147,62 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
                         uint32_t view_index,
                         struct xrt_pose *out_pose)
 {
-	struct xrt_pose pose = read_pose_from_file(test_input);
+	struct xrt_pose pose = illixr_read_pose();
 
 	*out_pose = pose;
 }
 
+static int
+illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp)
+{
+	// Load library
+	if (!(dh->illixr_lib = dlopen(path, RTLD_LAZY|RTLD_LOCAL))) {
+		DH_ERROR(dh, "dlopen: %s", dlerror());
+		return 1;
+	}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	dh->ops.init = dlsym(dh->illixr_lib, "illixrrt_init");
+	dh->ops.load_component = dlsym(dh->illixr_lib, "illixrrt_load_component");
+	dh->ops.attach_component = dlsym(dh->illixr_lib, "illixrrt_attach_component");
+	dh->ops.run = dlsym(dh->illixr_lib, "illixrrt_run");
+	dh->ops.join = dlsym(dh->illixr_lib, "illixrrt_join");
+	dh->ops.destroy = dlsym(dh->illixr_lib, "illixrrt_destroy");
+#pragma GCC diagnostic pop
+	if (!dh->ops.init || !dh->ops.load_component || !dh->ops.attach_component ||
+	    !dh->ops.run || !dh->ops.join || !dh->ops.destroy) {
+		DH_ERROR(dh, "Missing symbols in IllixrRT library");
+		goto dl_cleanup;
+	}
+	char *libs = strdup(comp);
+	if (dh->ops.init() != 0) {
+		DH_ERROR(dh, "IllixrRT initialization failed.");
+		goto dl_cleanup;
+	}
+
+	char *libpath = libs;
+	for (size_t i=0; libs[i]; i++) {
+		if (libs[i] == ':') {
+			libs[i] = '\0';
+			dh->ops.load_component(libpath);
+			libpath = libs+i+1;
+		}
+	}
+	dh->ops.load_component(libpath);
+	dh->ops.attach_component((void *)illixr_monado_create_component);
+
+	dh->ops.run();
+
+	return 0;
+
+dl_cleanup:
+	dlclose(dh->illixr_lib);
+	return 1;
+}
+
 struct xrt_device *
-illixr_hmd_create(void)
+illixr_hmd_create(const char *path, const char *comp)
 {
 	enum u_device_alloc_flags flags = (enum u_device_alloc_flags)(
 	    U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
@@ -217,16 +249,12 @@ illixr_hmd_create(void)
 		u_distortion_mesh_none(dh->base.hmd);
 	}
 
-	return &dh->base;
-}
+	// Start Illixr Spindle
+	if (illixr_rt_launch(dh, path, comp) != 0) {
+		DH_ERROR(dh, "Failed to load Illixr Runtime");
+		illixr_hmd_destroy(&dh->base);
+		return NULL;
+	}
 
-int
-illixr_found(struct xrt_prober *xp,
-             struct xrt_prober_device **devices,
-             size_t num_devices,
-             size_t index,
-             struct xrt_device **out_xdevs)
-{
-	out_xdevs[0] = illixr_hmd_create();
-	return 1;
+	return &dh->base;
 }

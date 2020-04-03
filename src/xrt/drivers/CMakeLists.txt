@@ -11,16 +11,31 @@ include_directories(
 set(ENABLED_HEADSET_DRIVERS)
 set(ENABLED_DRIVERS)
 
-set(ILLIXR_SOURCE_FILES
-	illixr/illixr_device.c
-	illixr/illixr_interface.h
-	illixr/illixr_prober.c
+
+
+if (BUILD_DRIVER_ILLIXR)
+	set(ILLIXR_SOURCE_FILES
+		illixr/illixr_device.c
+		illixr/illixr_interface.h
+		illixr/illixr_prober.c
+		illixr/illixr_component.cpp
+		illixr/illixr_component.h
+		)
+
+	# Use OBJECT to not create a archive, since it just gets in the way.
+	add_library(drv_illixr OBJECT ${ILLIXR_SOURCE_FILES})
+	target_include_directories(drv_illixr PUBLIC ${ILLIXR_PATH})
+
+	target_include_directories(drv_illixr SYSTEM PRIVATE
+	# ${VULKAN_INCLUDE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/../../external
+	# Shaders - marked SYSTEM so we get no warnings
+	# ${CMAKE_CURRENT_BINARY_DIR}
 	)
 
-# Use OBJECT to not create a archive, since it just gets in the way.
-add_library(drv_illixr OBJECT ${ILLIXR_SOURCE_FILES})
-list(APPEND ENABLED_HEADSET_DRIVERS illixr)
-
+	target_compile_options(drv_illixr PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-std=c++2a>)
+	list(APPEND ENABLED_HEADSET_DRIVERS illixr)
+endif()
 
 if(BUILD_DRIVER_DUMMY)
 	set(DUMMY_SOURCE_FILES

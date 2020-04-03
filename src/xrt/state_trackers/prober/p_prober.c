@@ -81,6 +81,11 @@ can_open(struct xrt_prober *xp, struct xrt_prober_device *xpdev);
 static void
 destroy(struct xrt_prober **xp);
 
+static const char *
+get_illixr_path(struct xrt_prober *xp, struct xrt_prober_device *xpdev);
+
+static const char *
+get_illixr_components(struct xrt_prober *xp, struct xrt_prober_device *xpdev);
 
 /*
  *
@@ -126,6 +131,7 @@ xrt_bus_type_to_string(enum xrt_bus_type t)
 		ENUM_TO_STR(XRT_BUS_TYPE_UNKNOWN);
 		ENUM_TO_STR(XRT_BUS_TYPE_USB);
 		ENUM_TO_STR(XRT_BUS_TYPE_BLUETOOTH);
+		ENUM_TO_STR(XRT_BUS_TYPE_ILLIXR);
 	}
 	return "";
 }
@@ -316,6 +322,8 @@ initialize(struct prober *p, struct xrt_prober_entry_lists *lists)
 	p->base.get_string_descriptor = get_string_descriptor;
 	p->base.can_open = can_open;
 	p->base.destroy = destroy;
+	p->base.get_illixr_path = get_illixr_path;
+	p->base.get_illixr_components = get_illixr_components;
 	p->lists = lists;
 	p->print_spew = debug_get_bool_option_prober_spew();
 	p->print_debug = debug_get_bool_option_prober_debug();
@@ -787,4 +795,16 @@ destroy(struct xrt_prober **xp)
 	free(p);
 
 	*xp = NULL;
+}
+
+static const char *
+get_illixr_path(struct xrt_prober *xp, struct xrt_prober_device *xpdev) {
+	struct prober_device *pdev = (struct prober_device *)xpdev;
+	return pdev->illixr.path;
+}
+
+static const char *
+get_illixr_components(struct xrt_prober *xp, struct xrt_prober_device *xpdev) {
+	struct prober_device *pdev = (struct prober_device *)xpdev;
+	return pdev->illixr.comp;
 }

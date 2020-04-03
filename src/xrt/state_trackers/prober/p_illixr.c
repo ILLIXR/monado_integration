@@ -49,10 +49,18 @@ p_illixr_probe(struct prober *p)
 {
 	struct prober_device *pdev;
 
+	const char *illixr_path, *illixr_comp;
+	illixr_path = getenv("ILLIXR_PATH");
+	illixr_comp = getenv("ILLIXR_COMP");
+	if (!illixr_path || !illixr_comp) {
+		return 0;
+	}
+
 	add_device(p, &pdev);
 	pdev->base.vendor_id = ILLIXR_VID;
 	pdev->base.product_id = ILLIXR_PID;
 	pdev->base.bus = XRT_BUS_TYPE_ILLIXR;
-
+	pdev->illixr.path = illixr_path;
+	pdev->illixr.comp = illixr_comp;
 	return 0;
 }

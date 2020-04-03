@@ -20,7 +20,9 @@ if(BUILD_WITH_JPEG)
 	list(APPEND DRIVER_LIBRARIES ${JPEG_LIBRARIES})
 endif()
 
-list(APPEND DRIVER_OBJECTS $<TARGET_OBJECTS:drv_illixr>)
+if(BUILD_DRIVER_ILLIXR)
+	list(APPEND DRIVER_OBJECTS $<TARGET_OBJECTS:drv_illixr>)
+endif()
 
 if(BUILD_DRIVER_DUMMY)
 	list(APPEND DRIVER_OBJECTS $<TARGET_OBJECTS:drv_dummy>)
@@ -75,8 +77,8 @@ endif()
 
 add_subdirectory(common)
 add_subdirectory(openxr)
-add_subdirectory(cli)
+# add_subdirectory(cli)
 
-if(BUILD_TARGET_GUI)
-	add_subdirectory(gui)
-endif()
+# if(BUILD_TARGET_GUI)
+# 	add_subdirectory(gui)
+# endif()

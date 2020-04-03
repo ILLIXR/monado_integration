@@ -45,6 +45,8 @@ target_link_libraries(gui PRIVATE
 	${LIBUVC_LIBRARIES}
 	${UDEV_LIBRARIES}
 	${SDL2_LIBRARIES}
+	${CMAKE_DL_LIBS}
+	"glfw"
 	)
 
 if(DRIVER_OBJECTS)

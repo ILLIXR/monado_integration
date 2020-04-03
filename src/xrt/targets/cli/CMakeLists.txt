@@ -39,6 +39,8 @@ target_link_libraries(cli PRIVATE
 	${LIBUVC_LIBRARIES}
 	${UDEV_LIBRARIES}
 	Threads::Threads
+	${CMAKE_DL_LIBS}
+	"glfw"
 	)
 
 if(DRIVER_OBJECTS)

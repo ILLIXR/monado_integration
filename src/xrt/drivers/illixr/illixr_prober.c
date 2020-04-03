@@ -50,7 +50,14 @@ illixr_prober_autoprobe(struct xrt_auto_prober *xap,
 		return NULL;
 	}
 
-	return illixr_hmd_create();
+	const char *illixr_path, *illixr_comp;
+	illixr_path = getenv("ILLIXR_PATH");
+	illixr_comp = getenv("ILLIXR_COMP");
+	if (!illixr_path || !illixr_comp) {
+		return NULL;
+	}
+
+	return illixr_hmd_create(illixr_path, illixr_comp);
 }
 
 struct xrt_auto_prober *
@@ -61,4 +68,17 @@ illixr_create_auto_prober()
 	dp->base.lelo_dallas_autoprobe = illixr_prober_autoprobe;
 
 	return &dp->base;
+}
+
+int
+illixr_found(struct xrt_prober *xp,
+             struct xrt_prober_device **devices,
+             size_t num_devices,
+             size_t index,
+             struct xrt_device **out_xdevs)
+{
+	const char *path = xrt_prober_get_illixr_path(xp, devices[index]);
+	const char *comp = xrt_prober_get_illixr_components(xp, devices[index]);
+	out_xdevs[0] = illixr_hmd_create(path, comp);
+	return 1;
 }
