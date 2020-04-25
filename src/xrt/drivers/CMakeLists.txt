@@ -26,12 +26,12 @@ if (BUILD_DRIVER_ILLIXR)
 	add_library(drv_illixr OBJECT ${ILLIXR_SOURCE_FILES})
 	target_include_directories(drv_illixr PUBLIC ${ILLIXR_PATH})
 
-	target_include_directories(drv_illixr SYSTEM PRIVATE
-	# ${VULKAN_INCLUDE_DIR}
-	${CMAKE_CURRENT_SOURCE_DIR}/../../external
-	# Shaders - marked SYSTEM so we get no warnings
-	# ${CMAKE_CURRENT_BINARY_DIR}
-	)
+#	target_include_directories(drv_illixr SYSTEM PRIVATE
+#	# ${VULKAN_INCLUDE_DIR}
+#	${CMAKE_CURRENT_SOURCE_DIR}/../../external
+#	# Shaders - marked SYSTEM so we get no warnings
+#	# ${CMAKE_CURRENT_BINARY_DIR}
+#	)
 
 	target_compile_options(drv_illixr PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-std=c++2a>)
 	list(APPEND ENABLED_HEADSET_DRIVERS illixr)

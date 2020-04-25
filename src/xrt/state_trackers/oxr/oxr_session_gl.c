@@ -19,6 +19,7 @@
 
 #ifdef XR_USE_PLATFORM_XLIB
 #include "xrt/xrt_gfx_xlib.h"
+
 #endif
 
 #ifdef XR_USE_GRAPHICS_API_OPENGL
@@ -41,6 +42,9 @@ oxr_session_populate_gl_xlib(struct oxr_logger *log,
 
 	sess->compositor = &xcgl->base;
 	sess->create_swapchain = oxr_swapchain_gl_create;
+
+    // HACK FOR ILLIXR
+    sess->sys->xdevs[0]->set_output((void*)next->glxContext, 0, NULL, NULL);
 
 	return XR_SUCCESS;
 }

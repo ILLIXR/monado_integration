@@ -17,6 +17,7 @@
 #include "ogl/ogl_api.h"
 #include "client/comp_gl_client.h"
 
+#include "../drivers/illixr/illixr_component.h"
 
 /*
  *
@@ -146,8 +147,15 @@ client_gl_compositor_end_frame(struct xrt_compositor *xc,
 	}
 
 	// Pipe down call into fd compositor.
+	/*
 	c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, internal,
-	                        image_index, layers, num_swapchains);
+	                        image_index, layers, num_swapchains);*/
+	struct client_gl_swapchain *lsc = client_gl_swapchain(xscs[0]);
+	struct client_gl_swapchain *rsc = client_gl_swapchain(xscs[1]);
+	unsigned int left = lsc->base.images[image_index[0]];
+	unsigned int right = rsc->base.images[image_index[1]];
+	
+	illixr_write_frame(left, right);
 }
 
 static int64_t
@@ -213,8 +221,7 @@ client_gl_swapchain_create(struct xrt_compositor *xc,
 	glGetIntegerv(array_size == 1 ? GL_TEXTURE_BINDING_2D
 	                              : GL_TEXTURE_BINDING_2D_ARRAY,
 	              (GLint *)&prev_texture);
-
-	glGenTextures(num_images, sc->base.images);
+	glGenTextures(num_images, &sc->base.images[0]);
 	for (uint32_t i = 0; i < num_images; i++) {
 		glBindTexture(array_size == 1 ? GL_TEXTURE_2D
 		                              : GL_TEXTURE_2D_ARRAY,
@@ -239,7 +246,6 @@ client_gl_swapchain_create(struct xrt_compositor *xc,
 			    width, height, array_size, sc->base.memory[i], 0);
 		}
 	}
-
 	glBindTexture(array_size == 1 ? GL_TEXTURE_2D : GL_TEXTURE_2D_ARRAY,
 	              prev_texture);
 

@@ -27,6 +27,8 @@
 
 #include "illixr_component.h"
 
+#include <GL/glx.h>
+
 /*
  *
  * Structs and defines.
@@ -153,7 +155,7 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
 }
 
 static int
-illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp)
+illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void* glctx)
 {
 	// Load library
 	if (!(dh->illixr_lib = dlopen(path, RTLD_LAZY|RTLD_LOCAL))) {
@@ -176,7 +178,7 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp)
 		goto dl_cleanup;
 	}
 	char *libs = strdup(comp);
-	if (dh->ops.init() != 0) {
+	if (dh->ops.init(glctx) != 0) {
 		DH_ERROR(dh, "IllixrRT initialization failed.");
 		goto dl_cleanup;
 	}
@@ -191,7 +193,6 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp)
 	}
 	dh->ops.load_component(libpath);
 	dh->ops.attach_component((void *)illixr_monado_create_component);
-
 	dh->ops.run();
 
 	return 0;
@@ -201,15 +202,42 @@ dl_cleanup:
 	return 1;
 }
 
-struct xrt_device *
-illixr_hmd_create(const char *path, const char *comp)
+static int initFlag = 0;
+static struct illixr_hmd* dh;
+static void* path;
+static void* comp;
+
+static void
+illixr_hmd_set_output(struct xrt_device *xdev,
+	                  enum xrt_output_name name,
+	                  struct time_state *timekeeping,
+	                  union xrt_output_value *value)
 {
+	if (initFlag) return;
+	// Start Illixr Spindle
+	if (illixr_rt_launch(dh, path, comp, (void*)xdev) != 0) {
+		DH_ERROR(dh, "Failed to load Illixr Runtime");
+		illixr_hmd_destroy(&dh->base);
+	}
+	else{
+		initFlag = 1;
+	}
+}
+
+struct xrt_device *
+illixr_hmd_create(const char *path_in, const char *comp_in)
+{
+	// UGLY CODE ALERT
+	path = path_in;
+	comp = comp_in;
+
 	enum u_device_alloc_flags flags = (enum u_device_alloc_flags)(
 	    U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
-	struct illixr_hmd *dh = U_DEVICE_ALLOCATE(struct illixr_hmd, flags, 1, 0);
+	dh = U_DEVICE_ALLOCATE(struct illixr_hmd, flags, 1, 0);
 	dh->base.update_inputs = illixr_hmd_update_inputs;
 	dh->base.get_tracked_pose = illixr_hmd_get_tracked_pose;
 	dh->base.get_view_pose = illixr_hmd_get_view_pose;
+	dh->base.set_output = illixr_hmd_set_output;
 	dh->base.destroy = illixr_hmd_destroy;
 	dh->base.name = XRT_DEVICE_GENERIC_HMD;
 	dh->base.hmd->blend_mode = XRT_BLEND_MODE_OPAQUE;
@@ -225,9 +253,9 @@ illixr_hmd_create(const char *path, const char *comp)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = 1920;
-	info.display.h_pixels = 1080;
-	info.display.w_meters = 0.13f;
+	info.display.w_pixels = 2048;
+	info.display.h_pixels = 1024;
+	info.display.w_meters = 0.14f;
 	info.display.h_meters = 0.07f;
 	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
 	info.lens_vertical_position_meters = 0.07f / 2.0f;
@@ -249,12 +277,7 @@ illixr_hmd_create(const char *path, const char *comp)
 		u_distortion_mesh_none(dh->base.hmd);
 	}
 
-	// Start Illixr Spindle
-	if (illixr_rt_launch(dh, path, comp) != 0) {
-		DH_ERROR(dh, "Failed to load Illixr Runtime");
-		illixr_hmd_destroy(&dh->base);
-		return NULL;
-	}
+	// delay init until session create
 
 	return &dh->base;
 }

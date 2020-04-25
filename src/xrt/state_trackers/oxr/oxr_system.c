@@ -20,7 +20,7 @@
 #include "oxr_two_call.h"
 
 // clang-format off
-DEBUG_GET_ONCE_NUM_OPTION(scale_percentage, "OXR_VIEWPORT_SCALE_PERCENTAGE", 140)
+DEBUG_GET_ONCE_NUM_OPTION(scale_percentage, "OXR_VIEWPORT_SCALE_PERCENTAGE", 100)
 // clang-format on
 
 static inline size_t
