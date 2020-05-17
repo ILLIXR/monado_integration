@@ -47,11 +47,8 @@ struct illixr_hmd
 	void *illixr_lib;
 	struct illixr_operation_t {
 		int (*init)();
-		void (*load_component)(const char *path);
-		void (*attach_component)(void *f);
-		void (*run)(void);
-		void (*join)(void);
-		void (*destroy)(void);
+		void (*load_plugin)(const char *path);
+		void (*attach_plugin)(void *f);
 	} ops;
 };
 
@@ -166,14 +163,10 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 	dh->ops.init = dlsym(dh->illixr_lib, "illixrrt_init");
-	dh->ops.load_component = dlsym(dh->illixr_lib, "illixrrt_load_component");
-	dh->ops.attach_component = dlsym(dh->illixr_lib, "illixrrt_attach_component");
-	dh->ops.run = dlsym(dh->illixr_lib, "illixrrt_run");
-	dh->ops.join = dlsym(dh->illixr_lib, "illixrrt_join");
-	dh->ops.destroy = dlsym(dh->illixr_lib, "illixrrt_destroy");
+	dh->ops.load_plugin = dlsym(dh->illixr_lib, "illixrrt_load_plugin");
+	dh->ops.attach_plugin = dlsym(dh->illixr_lib, "illixrrt_attach_plugin");
 #pragma GCC diagnostic pop
-	if (!dh->ops.init || !dh->ops.load_component || !dh->ops.attach_component ||
-	    !dh->ops.run || !dh->ops.join || !dh->ops.destroy) {
+	if (!dh->ops.init || !dh->ops.load_plugin || !dh->ops.attach_plugin) {
 		DH_ERROR(dh, "Missing symbols in IllixrRT library");
 		goto dl_cleanup;
 	}
@@ -187,13 +180,12 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void
 	for (size_t i=0; libs[i]; i++) {
 		if (libs[i] == ':') {
 			libs[i] = '\0';
-			dh->ops.load_component(libpath);
+			dh->ops.load_plugin(libpath);
 			libpath = libs+i+1;
 		}
 	}
-	dh->ops.load_component(libpath);
-	dh->ops.attach_component((void *)illixr_monado_create_component);
-	dh->ops.run();
+	dh->ops.load_plugin(libpath);
+	dh->ops.attach_plugin((void *)illixr_monado_create_plugin);
 
 	return 0;
 
