@@ -4,9 +4,9 @@ extern "C" {
 #include "xrt/xrt_device.h"
 }
 
-#include "common/plugin.hh"
-#include "common/switchboard.hh"
-#include "common/data_format.hh"
+#include "common/plugin.hpp"
+#include "common/switchboard.hpp"
+#include "common/data_format.hpp"
 
 using namespace ILLIXR;
 using std::unique_ptr;
@@ -30,7 +30,7 @@ extern "C" void* illixr_monado_create_plugin(void *pbptr) {
 	pb = (phonebook *)pbptr;
 	sb = pb->lookup_impl<switchboard>();
 	sb_eyebuffer = sb->publish<rendered_frame_alt>("eyebuffer");
-	sb_pose = sb->subscribe_latest<pose_type>("fast_pose");
+	sb_pose = sb->subscribe_latest<pose_type>("slow_pose");
 	// sb_config = sb->subscribe_latest<global_config>("global_config");
 	return new illixr_plugin;
 }
