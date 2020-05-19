@@ -33,7 +33,7 @@ if (BUILD_DRIVER_ILLIXR)
 #	# ${CMAKE_CURRENT_BINARY_DIR}
 #	)
 
-	target_compile_options(drv_illixr PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-std=c++2a>)
+	target_compile_options(drv_illixr PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>)
 	list(APPEND ENABLED_HEADSET_DRIVERS illixr)
 endif()
 
