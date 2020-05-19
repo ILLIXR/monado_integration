@@ -50,6 +50,11 @@ struct illixr_hmd
 		void (*load_plugin)(const char *path);
 		void (*attach_plugin)(void *f);
 	} ops;
+
+	// For delaying illixr init from instance creation to session creation
+	const char * path;
+	const char * comp;
+	bool initialized_flag;
 };
 
 
@@ -194,35 +199,29 @@ dl_cleanup:
 	return 1;
 }
 
-static int initFlag = 0;
-static struct illixr_hmd* dh;
-static void* path;
-static void* comp;
-
+// Save to delay init till session creation
 static void
 illixr_hmd_set_output(struct xrt_device *xdev,
 	                  enum xrt_output_name name,
 	                  struct time_state *timekeeping,
 	                  union xrt_output_value *value)
 {
-	if (initFlag) return;
+	struct illixr_hmd* dh = (struct illixr_hmd*)xdev;
+	if (dh->initialized_flag) return;
 	// Start Illixr Spindle
-	if (illixr_rt_launch(dh, path, comp, (void*)xdev) != 0) {
+	if (illixr_rt_launch(dh, dh->path, dh->comp, (void*)timekeeping) != 0) {
 		DH_ERROR(dh, "Failed to load Illixr Runtime");
 		illixr_hmd_destroy(&dh->base);
 	}
-	else{
-		initFlag = 1;
+	else {
+		dh->initialized_flag = true;
 	}
 }
 
 struct xrt_device *
 illixr_hmd_create(const char *path_in, const char *comp_in)
 {
-	// UGLY CODE ALERT
-	path = path_in;
-	comp = comp_in;
-
+	struct illixr_hmd* dh;
 	enum u_device_alloc_flags flags = (enum u_device_alloc_flags)(
 	    U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
 	dh = U_DEVICE_ALLOCATE(struct illixr_hmd, flags, 1, 0);
@@ -236,6 +235,9 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 	dh->pose.orientation.w = 1.0f; // All other values set to zero.
 	dh->print_spew = debug_get_bool_option_illixr_spew();
 	dh->print_debug = debug_get_bool_option_illixr_debug();
+	dh->path = path_in;
+	dh->comp = comp_in;
+	dh->initialized_flag = false;
 
 	// Print name.
 	snprintf(dh->base.str, XRT_DEVICE_NAME_LEN, "Illixr");

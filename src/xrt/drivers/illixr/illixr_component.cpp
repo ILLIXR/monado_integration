@@ -7,6 +7,7 @@ extern "C" {
 #include "common/plugin.hpp"
 #include "common/switchboard.hpp"
 #include "common/data_format.hpp"
+#include "common/pose_prediction.hpp"
 
 using namespace ILLIXR;
 using std::unique_ptr;
@@ -21,7 +22,7 @@ class illixr_plugin : public plugin {
 static phonebook *pb;
 static switchboard *sb;
 static unique_ptr<writer<rendered_frame_alt>> sb_eyebuffer;
-static unique_ptr<reader_latest<pose_type>> sb_pose;
+static pose_prediction* sb_pose;
 
 static pose_type prev_pose; /* stores a copy of pose_type each time illixr_read_pose() is called */
 static std::chrono::time_point<std::chrono::system_clock> sample_time; /* when prev_pose was stored */
@@ -30,13 +31,13 @@ extern "C" void* illixr_monado_create_plugin(void *pbptr) {
 	pb = (phonebook *)pbptr;
 	sb = pb->lookup_impl<switchboard>();
 	sb_eyebuffer = sb->publish<rendered_frame_alt>("eyebuffer");
-	sb_pose = sb->subscribe_latest<pose_type>("slow_pose");
+	sb_pose = pb->lookup_impl<pose_prediction>();
 	// sb_config = sb->subscribe_latest<global_config>("global_config");
 	return new illixr_plugin;
 }
 
 extern "C" struct xrt_pose illixr_read_pose() {
-	const pose_type* pose = sb_pose->get_latest_ro();
+	const pose_type* pose = sb_pose->get_fast_pose();
 	struct xrt_pose ret;
 	if (!pose) {
 		// Query failed. Return default pose
