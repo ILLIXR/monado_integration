@@ -26,6 +26,8 @@
 #include "util/u_distortion_mesh.h"
 
 #include "illixr_component.h"
+#include "common/dynamic_lib.hpp"
+#include "common/runtime.hpp"
 
 #include <GL/glx.h>
 
@@ -43,13 +45,6 @@ struct illixr_hmd
 
 	bool print_spew;
 	bool print_debug;
-
-	void *illixr_lib;
-	struct illixr_operation_t {
-		int (*init)();
-		void (*load_plugin)(const char *path);
-		void (*attach_plugin)(void *f);
-	} ops;
 
 	// For delaying illixr init from instance creation to session creation
 	const char * path;
@@ -159,44 +154,15 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
 static int
 illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void* glctx)
 {
-	// Load library
-	if (!(dh->illixr_lib = dlopen(path, RTLD_LAZY|RTLD_LOCAL))) {
-		DH_ERROR(dh, "dlopen: %s", dlerror());
-		return 1;
-	}
+	ILLIXR::dynamic_lib illixr_rt_lib = ILLIXR::dynamic_lib::create(path);
+	ILLIXR::runtime* runtime = illixr_rt_lib.get
+		<ILLIXR::runtime*(*)(GLXContext)>("runtime_factory")
+		(reinterpret_cast<GLXContext>(glctx));
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	dh->ops.init = dlsym(dh->illixr_lib, "illixrrt_init");
-	dh->ops.load_plugin = dlsym(dh->illixr_lib, "illixrrt_load_plugin");
-	dh->ops.attach_plugin = dlsym(dh->illixr_lib, "illixrrt_attach_plugin");
-#pragma GCC diagnostic pop
-	if (!dh->ops.init || !dh->ops.load_plugin || !dh->ops.attach_plugin) {
-		DH_ERROR(dh, "Missing symbols in IllixrRT library");
-		goto dl_cleanup;
-	}
-	char *libs = strdup(comp);
-	if (dh->ops.init(glctx) != 0) {
-		DH_ERROR(dh, "IllixrRT initialization failed.");
-		goto dl_cleanup;
-	}
-
-	char *libpath = libs;
-	for (size_t i=0; libs[i]; i++) {
-		if (libs[i] == ':') {
-			libs[i] = '\0';
-			dh->ops.load_plugin(libpath);
-			libpath = libs+i+1;
-		}
-	}
-	dh->ops.load_plugin(libpath);
-	dh->ops.attach_plugin((void *)illixr_monado_create_plugin);
+	runtime->load_so_list(comp);
+	runtime->load_plugin_factory((ILLIXR::plugin_factory)illixr_monado_create_plugin);
 
 	return 0;
-
-dl_cleanup:
-	dlclose(dh->illixr_lib);
-	return 1;
 }
 
 // Save to delay init till session creation
@@ -218,6 +184,7 @@ illixr_hmd_set_output(struct xrt_device *xdev,
 	}
 }
 
+extern "C"
 struct xrt_device *
 illixr_hmd_create(const char *path_in, const char *comp_in)
 {

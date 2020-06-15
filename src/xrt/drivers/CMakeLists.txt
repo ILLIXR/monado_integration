@@ -15,7 +15,7 @@ set(ENABLED_DRIVERS)
 
 if (BUILD_DRIVER_ILLIXR)
 	set(ILLIXR_SOURCE_FILES
-		illixr/illixr_device.c
+		illixr/illixr_device.cpp
 		illixr/illixr_interface.h
 		illixr/illixr_prober.c
 		illixr/illixr_component.cpp
