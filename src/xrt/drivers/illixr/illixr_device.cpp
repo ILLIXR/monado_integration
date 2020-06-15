@@ -159,7 +159,16 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void
 		<ILLIXR::runtime*(*)(GLXContext)>("runtime_factory")
 		(reinterpret_cast<GLXContext>(glctx));
 
-	runtime->load_so_list(comp);
+	char *libs = strdup(comp);
+	char *libpath = libs;
+	for (size_t i=0; libs[i]; i++) {
+		if (libs[i] == ':') {
+			libs[i] = '\0';
+			runtime->load_so(libpath);
+			libpath = libs+i+1;
+		}
+	}
+
 	runtime->load_plugin_factory((ILLIXR::plugin_factory)illixr_monado_create_plugin);
 
 	return 0;
