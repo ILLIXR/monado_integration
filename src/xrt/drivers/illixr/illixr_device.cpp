@@ -15,6 +15,8 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <alloca.h>
+#include <string>
+#include <sstream>
 
 #include "math/m_api.h"
 #include "xrt/xrt_device.h"
@@ -151,6 +153,17 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
 	*out_pose = pose;
 }
 
+// https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
+std::vector<std::string> split(const std::string& s, char delimiter) {
+   std::vector<std::string> tokens;
+   std::string token;
+   std::istringstream tokenStream {s};
+   while (std::getline(tokenStream, token, delimiter)) {
+      tokens.push_back(token);
+   }
+   return tokens;
+}
+
 static int
 illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void* glctx)
 {
@@ -159,14 +172,8 @@ illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void
 		<ILLIXR::runtime*(*)(GLXContext)>("runtime_factory")
 		(reinterpret_cast<GLXContext>(glctx));
 
-	char *libs = strdup(comp);
-	char *libpath = libs;
-	for (size_t i=0; libs[i]; i++) {
-		if (libs[i] == ':') {
-			libs[i] = '\0';
-			runtime->load_so(libpath);
-			libpath = libs+i+1;
-		}
+	for (std::string libpath : split(std::string{comp}, ':')) {
+		runtime->load_so(libpath);
 	}
 
 	runtime->load_plugin_factory((ILLIXR::plugin_factory)illixr_monado_create_plugin);
