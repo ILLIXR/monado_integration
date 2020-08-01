@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-void *illixr_monado_create_plugin(void *);
+void* illixr_monado_create_plugin(void* pb);
 struct xrt_pose illixr_read_pose();
 
 void illixr_write_frame(unsigned int left,
