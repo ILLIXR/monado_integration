@@ -145,7 +145,7 @@ client_gl_compositor_end_frame(struct xrt_compositor *xc,
 	}
 
 	// Pipe down call into fd compositor.
-	c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, internal,
+	c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, xscs,
 	                        image_index, layers, num_swapchains);
 
 	/*
