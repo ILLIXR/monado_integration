@@ -55,6 +55,7 @@
 
 #include "main/comp_compositor.h"
 #include "main/comp_client_interface.h"
+#include "../drivers/illixr/illixr_component.h"
 
 #include <unistd.h>
 #include <math.h>
@@ -238,14 +239,16 @@ compositor_end_frame(struct xrt_compositor *xc,
 	struct comp_compositor *c = comp_compositor(xc);
 	COMP_SPEW(c, "END_FRAME");
 
-	struct comp_swapchain_image *right;
-	struct comp_swapchain_image *left;
-
 	// Stereo!
 	if (num_swapchains == 2) {
-		left = &comp_swapchain(xscs[0])->images[image_index[0]];
-		right = &comp_swapchain(xscs[1])->images[image_index[1]];
-		comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
+		// struct comp_swapchain_image *right;
+		// struct comp_swapchain_image *left;
+		// left = &comp_swapchain(xscs[0])->images[image_index[0]];
+		// right = &comp_swapchain(xscs[1])->images[image_index[1]];
+		// comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
+		unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
+		unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
+		illixr_write_frame(left, right);
 	} else {
 		COMP_ERROR(c, "non-stereo rendering not supported");
 	}
