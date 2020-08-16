@@ -147,15 +147,14 @@ client_gl_compositor_end_frame(struct xrt_compositor *xc,
 	}
 
 	// Pipe down call into fd compositor.
-	/*
-	c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, internal,
-	                        image_index, layers, num_swapchains);*/
-	struct client_gl_swapchain *lsc = client_gl_swapchain(xscs[0]);
-	struct client_gl_swapchain *rsc = client_gl_swapchain(xscs[1]);
-	unsigned int left = lsc->base.images[image_index[0]];
-	unsigned int right = rsc->base.images[image_index[1]];
-	
-	illixr_write_frame(left, right);
+
+	// c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, internal,
+	//                         image_index, layers, num_swapchains);
+
+	// We have to pass xscs instead of internal because ILLIXR needs the texture
+	// IDs and internal doesn't have them
+	c->xcfd->base.end_frame(&c->xcfd->base, blend_mode, xscs,
+	                        image_index, layers, num_swapchains);
 }
 
 static int64_t
