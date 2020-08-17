@@ -19,12 +19,12 @@ public:
 	illixr_plugin(std::string name_, phonebook* pb_)
 		: plugin{name_, pb_}
 		, sb{pb->lookup_impl<switchboard>()}
-		, sb_pose{pb->lookup_impl<const pose_prediction>()}
+		, sb_pose{pb->lookup_impl<pose_prediction>()}
 		, sb_eyebuffer{sb->publish<rendered_frame_alt>("eyebuffer")}
 	{ }
 
 	const std::shared_ptr<switchboard> sb;
-	const std::shared_ptr<const pose_prediction> sb_pose;
+	const std::shared_ptr<pose_prediction> sb_pose;
 	const std::unique_ptr<writer<rendered_frame_alt>> sb_eyebuffer;
 	pose_type prev_pose; /* stores a copy of pose_type each time illixr_read_pose() is called */
 	std::chrono::time_point<std::chrono::system_clock> sample_time; /* when prev_pose was stored */
