@@ -44,7 +44,7 @@ extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
 extern "C" struct xrt_pose illixr_read_pose() {
 	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 
-	const pose_type pose = illixr_plugin_obj->sb_pose->get_fast_pose();
+	const pose_type pose = illixr_plugin_obj->sb_pose->get_fast_pose().pose;
 	if (!illixr_plugin_obj->sb_pose->fast_pose_reliable()) {
 		std::cerr << "Pose not reliable yet; returning best guess" << std::endl;
 	}
@@ -75,7 +75,9 @@ extern "C" void illixr_write_frame(unsigned int left,
 
 	frame->texture_handles[0] = left;
 	frame->texture_handles[1] = right;
-	frame->render_pose = illixr_plugin_obj->prev_pose;
+	frame->render_pose = fast_pose_type{
+		.pose = illixr_plugin_obj->prev_pose
+	};
 	frame->sample_time = illixr_plugin_obj->sample_time;
 	frame->render_time = std::chrono::high_resolution_clock::now();
 
@@ -96,6 +98,6 @@ extern "C" int64_t illixr_get_vsync_ns() {
 }
 
 extern "C" int64_t illixr_get_now_ns() {
-	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
+	//assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 	return std::chrono::duration_cast<std::chrono::nanoseconds>((std::chrono::system_clock::now()).time_since_epoch()).count();
 }
