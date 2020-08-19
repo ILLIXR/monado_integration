@@ -130,7 +130,7 @@ static bool
 compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 {
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
 	/*!
 	 * @todo this is not accurate, but it serves the purpose of not letting
 	 * us sleep longer than the next vsync usually
@@ -154,7 +154,7 @@ compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 	}
 	// Busy-wait for fine-grained delays.
 	while (now_ns < wake_up_time) {
-		now_ns = time_state_get_now(c->timekeeping);
+		now_ns = illixr_get_now_ns();
 	}
 
 	return ret;
@@ -170,12 +170,13 @@ compositor_wait_frame(struct xrt_compositor *xc,
 	// A little bit easier to read.
 	int64_t interval_ns = (int64_t)c->settings.nominal_frame_interval_ns;
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
 	if (c->last_next_display_time == 0) {
 		// First frame, we'll just assume we will display immediately
 
 		*predicted_display_period = interval_ns;
-		c->last_next_display_time = now_ns + interval_ns;
+		//c->last_next_display_time = now_ns + interval_ns;
+		c->last_next_display_time = illixr_get_vsync_ns();
 		*predicted_display_time = c->last_next_display_time;
 		return;
 	}
