@@ -783,9 +783,9 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
-	c->frame_overhead_ns = 2000000;
+	c->frame_overhead_ns = 4000000;
 	//! @todo set this to an estimate that's better than 6ms
-	c->expected_app_duration_ns = 6000000;
+	c->expected_app_duration_ns = 10000000;
 
 
 	// Need to select window backend before creating Vulkan, then
