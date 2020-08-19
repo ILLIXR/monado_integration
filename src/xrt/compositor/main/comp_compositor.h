@@ -94,6 +94,9 @@ struct comp_compositor
 	//! Timestamp of last-rendered (immersive) frame.
 	int64_t last_frame_time_ns;
 
+	//! Timestamp of last-rendered (immersive) frame.
+	int64_t last_frame_time_illixr_ns;
+
 	/*!
 	 * @brief Data exclusive to the begin_frame/end_frame for computing an
 	 * estimate of the app's needs.

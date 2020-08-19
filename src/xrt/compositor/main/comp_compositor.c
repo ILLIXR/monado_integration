@@ -130,12 +130,23 @@ static bool
 compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 {
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
 	/*!
 	 * @todo this is not accurate, but it serves the purpose of not letting
 	 * us sleep longer than the next vsync usually
 	 */
-	int64_t next_vsync = now_ns + c->settings.nominal_frame_interval_ns / 2;
+	//int64_t next_vsync = now_ns + c->settings.nominal_frame_interval_ns / 2;
+
+	int64_t next_vsync = illixr_get_vsync_ns();
+
+	// Get a vsync in the future.
+	while(next_vsync < now_ns)
+	{
+		next_vsync += c->settings.nominal_frame_interval_ns;
+	}
+
+	printf("MONADO Illixr vsync is in %3f ms\n", (float)((next_vsync-now_ns)/1000000.0f));
+	printf("MONADO Requested wake_up_time is in %3f ms\n", (float)((wake_up_time-now_ns)/1000000.0f));
 
 	bool ret = true;
 	// Sleep until the sooner of vsync or our deadline.
@@ -146,16 +157,21 @@ compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 	int64_t wait_duration = wake_up_time - now_ns;
 	if (wait_duration <= 0) {
 		// Don't wait at all
+		printf("MONADO Wait duration < 0\n");
 		return ret;
 	}
+
+	printf("MONADO Waiting for %3fms\n", (float)(wait_duration / 1000000.0f));
 
 	if (wait_duration > 1000000) {
 		os_nanosleep(wait_duration - (wait_duration % 1000000));
 	}
 	// Busy-wait for fine-grained delays.
 	while (now_ns < wake_up_time) {
-		now_ns = time_state_get_now(c->timekeeping);
+		now_ns = illixr_get_now_ns();
 	}
+
+	printf("MONADO is awake.\n");
 
 	return ret;
 }
@@ -170,46 +186,96 @@ compositor_wait_frame(struct xrt_compositor *xc,
 	// A little bit easier to read.
 	int64_t interval_ns = (int64_t)c->settings.nominal_frame_interval_ns;
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	// int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
+	int64_t illixr_vsync = illixr_get_vsync_ns();
+
+	// Get a vsync in the future.
+	// while(illixr_vsync < now_ns)
+	// {
+	// 	illixr_vsync += interval_ns;
+	// }
+
+	printf("MONADO Illixr vsync is in %3f ms\n", (float)((illixr_vsync-now_ns)/1000000.0));
+
 	if (c->last_next_display_time == 0) {
 		// First frame, we'll just assume we will display immediately
 
 		*predicted_display_period = interval_ns;
-		c->last_next_display_time = now_ns + interval_ns;
+		c->last_next_display_time = illixr_vsync;
 		*predicted_display_time = c->last_next_display_time;
 		return;
 	}
 
+
+	
+
+
+
+
 	// First estimate of next display time.
 	while (1) {
-
+		// Render_time_ns = amount of time we think the app will
+		// take to render. We want to wake up the app
+		// vsync - this time.
 		int64_t render_time_ns =
-		    c->expected_app_duration_ns + c->frame_overhead_ns;
-		int64_t swap_interval =
-		    ceil((float)render_time_ns / interval_ns);
-		int64_t render_interval_ns = swap_interval * interval_ns;
-		int64_t next_display_time =
-		    c->last_next_display_time + render_interval_ns;
-		/*!
-		 * @todo adjust next_display_time to be a multiple of
-		 * interval_ns from c->last_frame_time_ns
-		 */
+				c->expected_app_duration_ns + c->frame_overhead_ns;
 
+		printf("MONADO wants to give the app %3f ms to render.\n", (float)((render_time_ns)/1000000.0));
+
+		// Swap interval effectively always 1, here, for ILLIXR
+		// right now.
+		int64_t swap_interval =
+			ceil((double)render_time_ns / (double)interval_ns);
+		// Time between renders.
+		int64_t render_interval_ns = swap_interval * interval_ns;
+
+		// The predicted next display time. Acquired from
+		// the ILLIXR front-end.
+		int64_t next_display_time = illixr_vsync;
+
+		// If the next vsync, minus the amount of time we want
+		// to leave the app to render, is already in the past,
+		// we'll just bump the vsync one more interval into the future.
 		while ((next_display_time - render_time_ns) < now_ns) {
 			// we can't unblock in the past
+			printf("MONADO is advancing the next_display_time by render_interval_ns.\n");
 			next_display_time += render_interval_ns;
 		}
-		if (compositor_wait_vsync_or_time(
-		        c, (next_display_time - render_time_ns))) {
-			// True return val means we actually waited for the
-			// deadline.
-			*predicted_display_period =
-			    next_display_time - c->last_next_display_time;
-			*predicted_display_time = next_display_time;
+		
 
-			c->last_next_display_time = next_display_time;
-			return;
+		int64_t wait_duration = (next_display_time - render_time_ns) - now_ns;
+		int64_t wake_up_time = now_ns + wait_duration;
+		printf("MONADO Waiting for %3fms\n", (float)(wait_duration / 1000000.0f));
+
+		if (wait_duration > 1000000) {
+			os_nanosleep(wait_duration - (wait_duration % 1000000));
 		}
+		// Busy-wait for fine-grained delays.
+		while (now_ns < wake_up_time) {
+			now_ns = illixr_get_now_ns();
+		}
+
+		printf("MONADO is awake.\n");
+
+		*predicted_display_period =
+		    next_display_time - c->last_next_display_time;
+		*predicted_display_time = next_display_time;
+
+		c->last_next_display_time = next_display_time;
+		return;
+
+		// if (compositor_wait_vsync_or_time(
+		//         c, (next_display_time - render_time_ns))) {
+		// 	// True return val means we actually waited for the
+		// 	// deadline.
+		// 	*predicted_display_period =
+		// 	    next_display_time - c->last_next_display_time;
+		// 	*predicted_display_time = next_display_time;
+
+		// 	c->last_next_display_time = next_display_time;
+		// 	return;
+		// }
 	}
 }
 
@@ -248,6 +314,7 @@ compositor_end_frame(struct xrt_compositor *xc,
 		// comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
 		unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
 		unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
+		printf("MONADO is submitting frame.\n");
 		illixr_write_frame(left, right);
 	} else {
 		COMP_ERROR(c, "non-stereo rendering not supported");
@@ -255,6 +322,7 @@ compositor_end_frame(struct xrt_compositor *xc,
 
 	// Record the time of this frame.
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
+	c->last_frame_time_illixr_ns = illixr_get_now_ns();
 	c->app_profiling.last_end = c->last_frame_time_ns;
 
 	//! @todo do a time-weighted average or something.
@@ -782,9 +850,10 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
-	c->frame_overhead_ns = 2000000;
+	//c->frame_overhead_ns = 2000000;
+	c->frame_overhead_ns = 5000000; // ILLIXR OVERRIDE. We need more time!
 	//! @todo set this to an estimate that's better than 6ms
-	c->expected_app_duration_ns = 6000000;
+	c->expected_app_duration_ns = 5000000;
 
 
 	// Need to select window backend before creating Vulkan, then
