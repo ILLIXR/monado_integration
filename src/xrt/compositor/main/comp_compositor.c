@@ -55,6 +55,7 @@
 
 #include "main/comp_compositor.h"
 #include "main/comp_client_interface.h"
+#include "../drivers/illixr/illixr_component.h"
 
 #include <unistd.h>
 #include <math.h>
@@ -129,7 +130,7 @@ static bool
 compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 {
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
 	/*!
 	 * @todo this is not accurate, but it serves the purpose of not letting
 	 * us sleep longer than the next vsync usually
@@ -153,7 +154,7 @@ compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 	}
 	// Busy-wait for fine-grained delays.
 	while (now_ns < wake_up_time) {
-		now_ns = time_state_get_now(c->timekeeping);
+		now_ns = illixr_get_now_ns();
 	}
 
 	return ret;
@@ -169,12 +170,13 @@ compositor_wait_frame(struct xrt_compositor *xc,
 	// A little bit easier to read.
 	int64_t interval_ns = (int64_t)c->settings.nominal_frame_interval_ns;
 
-	int64_t now_ns = time_state_get_now(c->timekeeping);
+	int64_t now_ns = illixr_get_now_ns();
 	if (c->last_next_display_time == 0) {
 		// First frame, we'll just assume we will display immediately
 
 		*predicted_display_period = interval_ns;
-		c->last_next_display_time = now_ns + interval_ns;
+		//c->last_next_display_time = now_ns + interval_ns;
+		c->last_next_display_time = illixr_get_vsync_ns();
 		*predicted_display_time = c->last_next_display_time;
 		return;
 	}
@@ -238,14 +240,16 @@ compositor_end_frame(struct xrt_compositor *xc,
 	struct comp_compositor *c = comp_compositor(xc);
 	COMP_SPEW(c, "END_FRAME");
 
-	struct comp_swapchain_image *right;
-	struct comp_swapchain_image *left;
-
 	// Stereo!
 	if (num_swapchains == 2) {
-		left = &comp_swapchain(xscs[0])->images[image_index[0]];
-		right = &comp_swapchain(xscs[1])->images[image_index[1]];
-		comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
+		// struct comp_swapchain_image *right;
+		// struct comp_swapchain_image *left;
+		// left = &comp_swapchain(xscs[0])->images[image_index[0]];
+		// right = &comp_swapchain(xscs[1])->images[image_index[1]];
+		// comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
+		unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
+		unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
+		illixr_write_frame(left, right);
 	} else {
 		COMP_ERROR(c, "non-stereo rendering not supported");
 	}
@@ -779,9 +783,9 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
-	c->frame_overhead_ns = 2000000;
+	c->frame_overhead_ns = 4000000;
 	//! @todo set this to an estimate that's better than 6ms
-	c->expected_app_duration_ns = 6000000;
+	c->expected_app_duration_ns = 2000000;
 
 
 	// Need to select window backend before creating Vulkan, then
