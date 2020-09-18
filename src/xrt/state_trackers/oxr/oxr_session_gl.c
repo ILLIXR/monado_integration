@@ -43,11 +43,11 @@ oxr_session_populate_gl_xlib(struct oxr_logger *log,
 	sess->compositor = &xcgl->base;
 	sess->create_swapchain = oxr_swapchain_gl_create;
 
-    // HACK FOR ILLIXR
-    sess->sys->xdevs[0]->set_output(sess->sys->xdevs[0], 0, (void*)next->glxContext, NULL);
-    glXMakeCurrent(next->xDisplay,
-                   next->glxDrawable,
-                   next->glxContext);
+	// HACK FOR ILLIXR
+	sess->sys->xdevs[0]->set_output(sess->sys->xdevs[0], 0, (void*)next->glxContext, NULL);
+	glXMakeCurrent(next->xDisplay,
+	    next->glxDrawable,
+	    next->glxContext);
 
 	return XR_SUCCESS;
 }
