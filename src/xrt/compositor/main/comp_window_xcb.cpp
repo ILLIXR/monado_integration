@@ -208,7 +208,8 @@ comp_window_xcb_init(struct comp_window *w)
 	if (w->c->settings.fullscreen)
 		comp_window_xcb_set_full_screen(w_xcb);
 
-	xcb_map_window(w_xcb->connection, w_xcb->window);
+	// We do not need a separate window in ILLIXR
+	// xcb_map_window(w_xcb->connection, w_xcb->window);
 
 	return true;
 }
