@@ -28,7 +28,7 @@ public:
 	const std::shared_ptr<pose_prediction> sb_pose;
 	const std::unique_ptr<writer<rendered_frame_alt>> sb_eyebuffer;
 	const std::unique_ptr<reader_latest<time_type>> sb_vsync_estimate;
-	pose_type prev_pose; /* stores a copy of pose_type each time illixr_read_pose() is called */
+	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
 	std::chrono::time_point<std::chrono::system_clock> sample_time; /* when prev_pose was stored */
 };
 
@@ -44,11 +44,12 @@ extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
 extern "C" struct xrt_pose illixr_read_pose() {
 	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 
-	const pose_type pose = illixr_plugin_obj->sb_pose->get_fast_pose().pose;
 	if (!illixr_plugin_obj->sb_pose->fast_pose_reliable()) {
 		std::cerr << "Pose not reliable yet; returning best guess" << std::endl;
 	}
 	struct xrt_pose ret;
+	const fast_pose_type fast_pose = illixr_plugin_obj->sb_pose->get_fast_pose();
+	const pose_type pose = fast_pose.pose;
 
 	// record when the pose was read for use in write_frame
 	illixr_plugin_obj->sample_time = std::chrono::system_clock::now();
@@ -62,7 +63,7 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	ret.position.z = pose.position.z();
 
 	// store pose in static variable for use in write_frame
-	illixr_plugin_obj->prev_pose = pose; // copy member variables
+	illixr_plugin_obj->prev_pose = fast_pose; // copy member variables
 
 	return ret;
 }
@@ -75,9 +76,7 @@ extern "C" void illixr_write_frame(unsigned int left,
 
 	frame->texture_handles[0] = left;
 	frame->texture_handles[1] = right;
-	frame->render_pose = fast_pose_type{
-		.pose = illixr_plugin_obj->prev_pose
-	};
+	frame->render_pose = illixr_plugin_obj->prev_pose;
 	frame->sample_time = illixr_plugin_obj->sample_time;
 	frame->render_time = std::chrono::high_resolution_clock::now();
 
