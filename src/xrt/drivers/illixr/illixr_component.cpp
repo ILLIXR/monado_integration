@@ -20,13 +20,13 @@ public:
 		: plugin{name_, pb_}
 		, sb{pb->lookup_impl<switchboard>()}
 		, sb_pose{pb->lookup_impl<pose_prediction>()}
-		, sb_eyebuffer{sb->publish<rendered_frame_alt>("eyebuffer")}
+		, sb_eyebuffer{sb->publish<rendered_frame>("eyebuffer")}
 		, sb_vsync_estimate{sb->subscribe_latest<time_type>("vsync_estimate")}
 	{ }
 
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
-	const std::unique_ptr<writer<rendered_frame_alt>> sb_eyebuffer;
+	const std::unique_ptr<writer<rendered_frame>> sb_eyebuffer;
 	const std::unique_ptr<reader_latest<time_type>> sb_vsync_estimate;
 	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
 	std::chrono::time_point<std::chrono::system_clock> sample_time; /* when prev_pose was stored */
@@ -72,7 +72,7 @@ extern "C" void illixr_write_frame(unsigned int left,
 								   unsigned int right) {
 	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 
-	rendered_frame_alt* frame = new rendered_frame_alt();
+	rendered_frame* frame = new rendered_frame();
 
 	frame->texture_handles[0] = left;
 	frame->texture_handles[1] = right;
