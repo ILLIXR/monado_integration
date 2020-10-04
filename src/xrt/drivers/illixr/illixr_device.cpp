@@ -109,6 +109,7 @@ static void
 illixr_hmd_destroy(struct xrt_device *xdev)
 {
 	struct illixr_hmd *dh = illixr_hmd(xdev);
+	dh->runtime->stop();
 
 	delete dh->runtime;
 	delete dh->runtime_lib;
