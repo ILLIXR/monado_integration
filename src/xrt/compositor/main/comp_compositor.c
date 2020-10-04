@@ -261,6 +261,7 @@ compositor_end_frame(struct xrt_compositor *xc,
 	//! @todo do a time-weighted average or something.
 	c->expected_app_duration_ns =
 	    c->app_profiling.last_end - c->app_profiling.last_begin;
+	//printf("expected_app_duration = %lld ms\n", c->expected_app_duration_ns / 1000000);
 }
 
 
@@ -783,9 +784,10 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
+	// Timewarp wakes up ~4 ms before vsync
 	c->frame_overhead_ns = 4000000;
-	//! @todo set this to an estimate that's better than 6ms
-	c->expected_app_duration_ns = 2000000;
+	//! @todo set this to an estimate that's better than 8 ms
+	c->expected_app_duration_ns = 8000000;
 
 
 	// Need to select window backend before creating Vulkan, then
