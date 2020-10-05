@@ -161,13 +161,13 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
 
 // https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
 std::vector<std::string> split(const std::string& s, char delimiter) {
-   std::vector<std::string> tokens;
-   std::string token;
-   std::istringstream tokenStream {s};
-   while (std::getline(tokenStream, token, delimiter)) {
-      tokens.push_back(token);
-   }
-   return tokens;
+	std::vector<std::string> tokens;
+	std::string token;
+	std::istringstream tokenStream {s};
+	while (std::getline(tokenStream, token, delimiter)) {
+		tokens.push_back(token);
+	}
+	return tokens;
 }
 
 static int
@@ -208,7 +208,7 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 {
 	struct illixr_hmd* dh;
 	enum u_device_alloc_flags flags = (enum u_device_alloc_flags)(
-	    U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
+		U_DEVICE_ALLOC_HMD | U_DEVICE_ALLOC_TRACKING_NONE);
 	dh = U_DEVICE_ALLOCATE(struct illixr_hmd, flags, 1, 0);
 	dh->base.update_inputs = illixr_hmd_update_inputs;
 	dh->base.get_tracked_pose = illixr_hmd_get_tracked_pose;
