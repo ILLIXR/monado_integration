@@ -144,6 +144,10 @@ compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 		wake_up_time = next_vsync;
 	}
 	int64_t wait_duration = wake_up_time - now_ns;
+
+	// Debug
+	printf("%ld\n", wait_duration);
+
 	if (wait_duration <= 0) {
 		// Don't wait at all
 		return ret;
@@ -223,6 +227,8 @@ compositor_wait_frame(struct xrt_compositor *xc,
 			    next_display_time - c->last_next_display_time;
 			*predicted_display_time = next_display_time;
 
+			// Debug
+			printf("%ld,%ld,%ld,%ld\n", interval_ns, render_time_ns, render_interval_ns, c->last_next_display_time);
 			return;
 		}
 	}
