@@ -14,6 +14,9 @@ extern "C" {
 #include "common/pose_prediction.hpp"
 #include "common/relative_clock.hpp"
 
+// This is only a temporary solution. This define needs to go someplace else.
+#define ILLIXR_REFRESH_RATE (120.0f)
+
 using namespace ILLIXR;
 
 static constexpr duration VSYNC_PERIOD {freq2period(60.0)};
@@ -96,11 +99,8 @@ extern "C" void illixr_write_frame(unsigned int left,
 
 extern "C" int64_t illixr_get_vsync_ns() {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-
     switchboard::ptr<const switchboard::event_wrapper<time_point>> vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
-	
 	time_point target_time = vsync_estimate == nullptr ? illixr_plugin_obj->_m_clock->now() + VSYNC_PERIOD : **vsync_estimate;
-
 	return std::chrono::nanoseconds{target_time.time_since_epoch()}.count();
 }
 
