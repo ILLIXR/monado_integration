@@ -784,8 +784,8 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
-	// Timewarp wakes up ~4 ms before vsync
-	c->frame_overhead_ns = 4000000;
+	// 0.75 ms for timewarp, 1 ms for app time uncertainty, 0.75 ms for buffer
+	c->frame_overhead_ns = 2500000;
 	//! @todo set this to an estimate that's better than 8 ms
 	c->expected_app_duration_ns = 8000000;
 
