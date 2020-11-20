@@ -11,6 +11,9 @@ extern "C" {
 #include "common/data_format.hpp"
 #include "common/pose_prediction.hpp"
 
+// This is only a temporary solution. This define needs to go someplace else.
+#define ILLIXR_REFRESH_RATE (120.0f)
+
 using namespace ILLIXR;
 
 /// Dummy plugin class for an instance during phonebook registration
@@ -90,7 +93,7 @@ extern "C" int64_t illixr_get_vsync_ns() {
 	
 	if(vsync_estimate == nullptr)
 	{
-		return std::chrono::duration_cast<std::chrono::nanoseconds>((std::chrono::system_clock::now()).time_since_epoch()).count() + NANO_SEC/60;
+		return std::chrono::duration_cast<std::chrono::nanoseconds>((std::chrono::system_clock::now()).time_since_epoch()).count() + NANO_SEC/ILLIXR_REFRESH_RATE;
 	}
 
 	return std::chrono::duration_cast<std::chrono::nanoseconds>((*vsync_estimate).time_since_epoch()).count();

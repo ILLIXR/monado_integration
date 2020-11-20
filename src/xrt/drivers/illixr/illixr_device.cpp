@@ -3,7 +3,7 @@
 /*!
  * @file
  * @brief  illixr HMD device.
- * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author RSIM Group <illixr@cs.illinois.edu>
  * @ingroup drv_illixr
  */
 
@@ -32,6 +32,12 @@
 #include "common/runtime.hpp"
 
 #include <GL/glx.h>
+
+// This is only a temporary solution. These defines need to go someplace else.
+#define ILLIXR_RESOLUTION_WIDTH (2560)
+#define ILLIXR_RESOLUTION_HEIGHT (1440)
+#define ILLIXR_REFRESH_RATE (120.0f)
+#define ILLIXR_FOV_DEGREES (90.0f)
 
 /*
  *
@@ -234,20 +240,24 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = 2560;
-	info.display.h_pixels = 1440;
+	info.display.w_pixels = ILLIXR_RESOLUTION_WIDTH;
+	info.display.h_pixels = ILLIXR_RESOLUTION_HEIGHT;
 	info.display.w_meters = 0.14f;
 	info.display.h_meters = 0.07f;
 	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
 	info.lens_vertical_position_meters = 0.07f / 2.0f;
-	info.views[0].fov = 90.0f * (M_PI / 180.0f);
-	info.views[1].fov = 90.0f * (M_PI / 180.0f);
+	info.views[0].fov = ILLIXR_FOV_DEGREES * (M_PI / 180.0f);
+	info.views[1].fov = ILLIXR_FOV_DEGREES * (M_PI / 180.0f);
 
 	if (!u_device_setup_split_side_by_side(&dh->base, &info)) {
 		DH_ERROR(dh, "Failed to setup basic device info");
 		illixr_hmd_destroy(&dh->base);
 		return NULL;
 	}
+
+	// Manually set refresh rate
+	dh->base.hmd->screens[0].nominal_frame_interval_ns =
+	  (uint64_t) time_s_to_ns(1.0f / ILLIXR_REFRESH_RATE);
 
 	// Setup variable tracker.
 	u_var_add_root(dh, "Illixr", true);
