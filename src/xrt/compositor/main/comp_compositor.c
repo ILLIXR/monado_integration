@@ -175,13 +175,28 @@ compositor_wait_frame(struct xrt_compositor *xc,
 		// First frame, we'll just assume we will display immediately
 
 		*predicted_display_period = interval_ns;
-		//c->last_next_display_time = now_ns + interval_ns;
 		c->last_next_display_time = illixr_get_vsync_ns();
 		*predicted_display_time = c->last_next_display_time;
 		return;
 	}
 
-	// First estimate of next display time.
+	// This is the next vsync time
+	c->last_next_display_time = illixr_get_vsync_ns();
+
+	// We have already submitted a frame for it. The following math will
+	// calculate how long to wait to submit for the vsync after that.
+	// | vsync ----------*----------- vsync -------------------------- vsync |
+	// |                 ^
+	// |                 |
+	// |          <we are here>         *
+	// |                                ^
+	// |                                |
+	// |               <we have already submitted for this vsync>
+	// |                                                 *
+	// |                                                 ^
+	// |                                                 |
+	// |                                    <we are waiting till here>
+
 	while (1) {
 
 		int64_t render_time_ns =
@@ -208,7 +223,6 @@ compositor_wait_frame(struct xrt_compositor *xc,
 			    next_display_time - c->last_next_display_time;
 			*predicted_display_time = next_display_time;
 
-			c->last_next_display_time = next_display_time;
 			return;
 		}
 	}
