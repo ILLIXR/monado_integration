@@ -172,7 +172,7 @@ std::vector<std::string> split(const std::string& s, char delimiter) {
 static int
 illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void* glctx)
 {
-	dh->runtime_lib = new ILLIXR::dynamic_lib{ILLIXR::dynamic_lib::create(path)};
+	dh->runtime_lib = new ILLIXR::dynamic_lib{ILLIXR::dynamic_lib::create((std::string) path)};
 	dh->runtime = dh->runtime_lib->get
 		<ILLIXR::runtime*(*)(GLXContext)>("runtime_factory")
 		(reinterpret_cast<GLXContext>(glctx));
