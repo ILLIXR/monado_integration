@@ -29,7 +29,7 @@ public:
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
-	switchboard::reader_latest<time_type> sb_vsync_estimate;
+	switchboard::reader<time_type> sb_vsync_estimate;
 	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
 	time_type sample_time; /* when prev_pose was stored */
 };
