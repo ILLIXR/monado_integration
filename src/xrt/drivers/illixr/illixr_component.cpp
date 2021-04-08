@@ -5,6 +5,8 @@ extern "C" {
 }
 
 #include <iostream>
+#include <array>
+
 #include "common/plugin.hpp"
 #include "common/phonebook.hpp"
 #include "common/switchboard.hpp"
@@ -20,16 +22,16 @@ public:
 		: plugin{name_, pb_}
 		, sb{pb->lookup_impl<switchboard>()}
 		, sb_pose{pb->lookup_impl<pose_prediction>()}
-		, sb_eyebuffer{sb->publish<rendered_frame>("eyebuffer")}
-		, sb_vsync_estimate{sb->subscribe_latest<time_type>("vsync_estimate")}
+		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
+		, sb_vsync_estimate{sb->get_reader<time_type>("vsync_estimate")}
 	{ }
 
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
-	const std::unique_ptr<writer<rendered_frame>> sb_eyebuffer;
-	const std::unique_ptr<reader_latest<time_type>> sb_vsync_estimate;
+	switchboard::writer<rendered_frame> sb_eyebuffer;
+	switchboard::reader_latest<time_type> sb_vsync_estimate;
 	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
-	std::chrono::time_point<std::chrono::system_clock> sample_time; /* when prev_pose was stored */
+	time_type sample_time; /* when prev_pose was stored */
 };
 
 static illixr_plugin* illixr_plugin_obj = nullptr;
@@ -70,25 +72,31 @@ extern "C" struct xrt_pose illixr_read_pose() {
 
 extern "C" void illixr_write_frame(unsigned int left,
 								   unsigned int right) {
-	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
+	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
-	rendered_frame* frame = new rendered_frame();
+	const switchboard::writer<rendered_frame>& rf_writer = illixr_plugin_obj->sb_eyebuffer;
 
-	frame->texture_handles[0] = left;
-	frame->texture_handles[1] = right;
-	frame->render_pose = illixr_plugin_obj->prev_pose;
-	frame->sample_time = illixr_plugin_obj->sample_time;
-	frame->render_time = std::chrono::high_resolution_clock::now();
+    static unsigned int buffer_to_use = 0U;
 
-	illixr_plugin_obj->sb_eyebuffer->put(frame);
+	rf_writer.put(rf_writer.allocate<rendered_frame>(
+	    rendered_frame {
+	        std::array<GLuint, 2>{ left, right }.data(),
+	        std::array<GLuint, 2>{ buffer_to_use, buffer_to_use }.data(),
+            illixr_plugin_obj->prev_pose,
+            illixr_plugin_obj->sample_time,
+            std::chrono::system_clock::now()
+        }
+    ));
+
+    buffer_to_use = (buffer_to_use == 0U) ? 1U : 0U;
 }
 
 extern "C" int64_t illixr_get_vsync_ns() {
-	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
+	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
-	const time_type *vsync_estimate = illixr_plugin_obj->sb_vsync_estimate->get_latest_ro();
+	const time_type *vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
 	
-	if(vsync_estimate == nullptr)
+	if (vsync_estimate == nullptr)
 	{
 		return std::chrono::duration_cast<std::chrono::nanoseconds>((std::chrono::system_clock::now()).time_since_epoch()).count() + NANO_SEC/60;
 	}
