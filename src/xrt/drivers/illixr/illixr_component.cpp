@@ -74,11 +74,9 @@ extern "C" void illixr_write_frame(unsigned int left,
 								   unsigned int right) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
-	const switchboard::writer<rendered_frame>& rf_writer = illixr_plugin_obj->sb_eyebuffer;
-
     static unsigned int buffer_to_use = 0U;
 
-	rf_writer.put(rf_writer.allocate<rendered_frame>(
+	illixr_plugin_obj->sb_eyebuffer.put(illixr_plugin_obj->sb_eyebuffer.allocate<rendered_frame>(
 	    rendered_frame {
 	        std::array<GLuint, 2>{ left, right }.data(),
 	        std::array<GLuint, 2>{ buffer_to_use, buffer_to_use }.data(),
@@ -94,7 +92,7 @@ extern "C" void illixr_write_frame(unsigned int left,
 extern "C" int64_t illixr_get_vsync_ns() {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
-	const time_type *vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
+    switchboard::ptr<const time_type> vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
 	
 	if (vsync_estimate == nullptr)
 	{
