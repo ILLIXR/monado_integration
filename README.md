@@ -153,10 +153,10 @@ but if a relative path like `libopenxr_monado.so.0` is given,
 then `LD_LIBRARY_PATH` must include the directory that contains `libopenxr_monado.so.0`.
 The absolute path in `openxr_monado_dev.json` takes care of this for you.
 
-## Configuring Monado with Illixr
+## Configuring Monado with ILLIXR
 
-To build Monado with Illixr support, you need to supply a path to the Illixr
-header files. Some files require C++ headers of the Illixr common library. To do
+To build Monado with ILLIXR support, you need to supply a path to the ILLIXR
+header files. Some files require C++ headers of the ILLIXR common library. To do
 that, supply the `ILLIXR_PATH` variable when running cmake:
 
 ```
@@ -167,8 +167,8 @@ Where `/path/to/illixr` should contain the `common` folder. Note that meson is
 not supported yet. You have to use cmake.
 
 The above compilation only uses some header files and in no way statically links
-or somehow binds monado to that specific Illixr. You need to configure two
-environment variables to specify the Illixr shared library and launch
+or somehow binds monado to that specific ILLIXR. You need to configure two
+environment variables to specify the ILLIXR shared library and launch
 parameters:
 
 ```
@@ -176,13 +176,13 @@ export ILLIXR_PATH=/path/to/libillixrrt.so
 export ILLIXR_COMP=/path/to/libtimewarp_gl.so:/path/to/libslam1.so:/path/to/other_component.so
 ```
 
-* `ILLIXR_PATH` should be the path to the shared library build of the Illixr
+* `ILLIXR_PATH` should be the path to the shared library build of the ILLIXR
   runtime.
 * `ILLIXR_COMP` should be a list of colon-separated paths to the components'
   shared libraries to be loaded into spindle switchboard.
 
 Note NOT to load any application like `gldemo`, as Monado will be sending calls
-from the OpenXR app. The Illixr Monado driver will load itself as an application
+from the OpenXR app. The ILLIXR Monado driver will load itself as an application
 component in switchboard automatically.
 
 ## Direct mode

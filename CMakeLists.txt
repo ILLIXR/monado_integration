@@ -84,7 +84,7 @@ option(BUILD_WITH_PSMV "Enable Playstation Move driver" ON)
 option(BUILD_WITH_HYDRA "Enable Hydra driver" ON)
 option(BUILD_WITH_NS "Enable North Star driver" ON)
 
-set(ILLIXR_PATH "" CACHE PATH "Path to Illixr headers")
+set(ILLIXR_PATH "" CACHE PATH "Path to ILLIXR headers")
 
 ###
 # Flags

@@ -62,7 +62,7 @@
  * assign sequential elements of out_xdevs to the created devices.
  */
 struct xrt_prober_entry target_entry_list[] = {
-    {ILLIXR_VID, ILLIXR_PID, illixr_found, "Illixr"},
+    {ILLIXR_VID, ILLIXR_PID, illixr_found, "ILLIXR"},
 #ifdef XRT_BUILD_DRIVER_PSMV
     {PSMV_VID, PSMV_PID_ZCM1, psmv_found, "PS Move Controller (ZCM1)"},
     {PSMV_VID, PSMV_PID_ZCM2, psmv_found, "PS Move Controller (ZCM2)"},
