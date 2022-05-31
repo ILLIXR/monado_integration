@@ -15,8 +15,8 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <alloca.h>
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "math/m_api.h"
 #include "xrt/xrt_device.h"
@@ -31,13 +31,12 @@
 #include "common/dynamic_lib.hpp"
 #include "common/runtime.hpp"
 
-#include <GL/glx.h>
+static constexpr unsigned ILLIXR_RESOLUTION_WIDTH = 2560;
+static constexpr unsigned ILLIXR_RESOLUTION_HEIGHT = 1440;
+static constexpr double ILLIXR_REFRESH_RATE = 120.0f;
+static constexpr double ILLIXR_FOV_DEGREES = 90.0f;
 
-// This is only a temporary solution. These defines need to go someplace else.
-#define ILLIXR_RESOLUTION_WIDTH (2560)
-#define ILLIXR_RESOLUTION_HEIGHT (1440)
-#define ILLIXR_REFRESH_RATE (120.0f)
-#define ILLIXR_FOV_DEGREES (90.0f)
+#include <GL/glx.h>
 
 /*
  *
@@ -54,7 +53,7 @@ struct illixr_hmd
 	bool print_spew;
 	bool print_debug;
 
-	// For delaying illixr init from instance creation to session creation
+	// For delaying ILLIXR init from instance creation to session creation
 	const char * path;
 	const char * comp;
 	bool initialized_flag;
@@ -72,7 +71,7 @@ struct illixr_hmd
 static inline struct illixr_hmd *
 illixr_hmd(struct xrt_device *xdev)
 {
-	return (struct illixr_hmd *)xdev;
+	return (struct illixr_hmd *) xdev;
 }
 
 
@@ -83,8 +82,8 @@ illixr_hmd(struct xrt_device *xdev)
  * f1, f2, f3 // position
  */
 
-DEBUG_GET_ONCE_BOOL_OPTION(illixr_spew, "illixr_PRINT_SPEW", false)
-DEBUG_GET_ONCE_BOOL_OPTION(illixr_debug, "illixr_PRINT_DEBUG", false)
+DEBUG_GET_ONCE_BOOL_OPTION(illixr_spew, "ILLIXR_PRINT_SPEW", false)
+DEBUG_GET_ONCE_BOOL_OPTION(illixr_debug, "ILLIXR_PRINT_DEBUG", false)
 
 #define DH_SPEW(dh, ...)                                                       \
 	do {                                                                   \
@@ -147,7 +146,6 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 	int64_t now = time_state_get_now(timekeeping);
 
 	*out_timestamp = now;
-	// out_relation->pose = dh->pose;
 	out_relation->pose = illixr_read_pose();
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
@@ -160,6 +158,7 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
                         uint32_t view_index,
                         struct xrt_pose *out_pose)
 {
+	// TODO: Take eye relation into account to return unique pose per eye
 	struct xrt_pose pose = illixr_read_pose();
 
 	*out_pose = pose;
@@ -169,7 +168,7 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
 std::vector<std::string> split(const std::string& s, char delimiter) {
 	std::vector<std::string> tokens;
 	std::string token;
-	std::istringstream tokenStream {s};
+	std::istringstream tokenStream{s};
 	while (std::getline(tokenStream, token, delimiter)) {
 		tokens.push_back(token);
 	}
@@ -179,12 +178,19 @@ std::vector<std::string> split(const std::string& s, char delimiter) {
 static int
 illixr_rt_launch(struct illixr_hmd *dh, const char *path, const char *comp, void* glctx)
 {
+	// Create runtime dynamic library
 	dh->runtime_lib = new ILLIXR::dynamic_lib{ILLIXR::dynamic_lib::create(std::string{path})};
+
+	// Create runtime
 	dh->runtime = dh->runtime_lib->get
 		<ILLIXR::runtime*(*)(GLXContext)>("runtime_factory")
 		(reinterpret_cast<GLXContext>(glctx));
+
+	// Load plugins
 	dh->runtime->load_so(split(std::string{comp}, ':'));
-	dh->runtime->load_plugin_factory((ILLIXR::plugin_factory)illixr_monado_create_plugin);
+
+	// Load ILLIXR Monado driver
+	dh->runtime->load_plugin_factory((ILLIXR::plugin_factory) illixr_monado_create_plugin);
 
 	return 0;
 }
@@ -196,14 +202,15 @@ illixr_hmd_set_output(struct xrt_device *xdev,
 	                  struct time_state *timekeeping,
 	                  union xrt_output_value *value)
 {
-	struct illixr_hmd* dh = (struct illixr_hmd*)xdev;
-	if (dh->initialized_flag) return;
-	// Start Illixr Spindle
+	struct illixr_hmd* dh = illixr_hmd(xdev);
+	if (dh->initialized_flag)
+		return;
+
+	// Start ILLIXR
 	if (illixr_rt_launch(dh, dh->path, dh->comp, (void*)timekeeping) != 0) {
-		DH_ERROR(dh, "Failed to load Illixr Runtime");
+		DH_ERROR(dh, "Failed to load ILLIXR runtime");
 		illixr_hmd_destroy(&dh->base);
-	}
-	else {
+	} else {
 		dh->initialized_flag = true;
 	}
 }
@@ -231,7 +238,7 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 	dh->initialized_flag = false;
 
 	// Print name.
-	snprintf(dh->base.str, XRT_DEVICE_NAME_LEN, "Illixr");
+	snprintf(dh->base.str, XRT_DEVICE_NAME_LEN, "ILLIXR");
 
 	// Setup input.
 	dh->base.inputs[0].name = XRT_INPUT_GENERIC_HEAD_POSE;
@@ -255,18 +262,16 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Manually set refresh rate
 	dh->base.hmd->screens[0].nominal_frame_interval_ns =
-	  (uint64_t) time_s_to_ns(1.0f / ILLIXR_REFRESH_RATE);
+		(uint64_t) time_s_to_ns(1.0f / ILLIXR_REFRESH_RATE);
 
 	// Setup variable tracker.
-	u_var_add_root(dh, "Illixr", true);
+	u_var_add_root(dh, "ILLIXR", true);
 	u_var_add_pose(dh, &dh->pose, "pose");
 
 	if (dh->base.hmd->distortion.preferred == XRT_DISTORTION_MODEL_NONE) {
 		// Setup the distortion mesh.
 		u_distortion_mesh_none(dh->base.hmd);
 	}
-
-	// delay init until session create
 
 	return &dh->base;
 }

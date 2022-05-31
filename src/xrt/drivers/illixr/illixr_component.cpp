@@ -1,27 +1,23 @@
 extern "C" {
-//#include "ogl/ogl_api.h"
-//#include <GLFW/glfw3.h>
 #include "xrt/xrt_device.h"
 }
 
-#include <iostream>
 #include <array>
+#include <iostream>
 
-#include "common/plugin.hpp"
-#include "common/phonebook.hpp"
-#include "common/switchboard.hpp"
 #include "common/data_format.hpp"
+#include "common/phonebook.hpp"
+#include "common/plugin.hpp"
 #include "common/pose_prediction.hpp"
 #include "common/relative_clock.hpp"
-
-// This is only a temporary solution. This define needs to go someplace else.
-#define ILLIXR_REFRESH_RATE (120.0f)
+#include "common/switchboard.hpp"
 
 using namespace ILLIXR;
 
-static constexpr duration VSYNC_PERIOD {freq2period(60.0)};
+static constexpr double ILLIXR_REFRESH_RATE = 120.0f;
+static constexpr duration VSYNC_PERIOD{freq2period(ILLIXR_REFRESH_RATE)};
 
-/// Dummy plugin class for an instance during phonebook registration
+/// Interface to switchboard and the rest of the runtime
 class illixr_plugin : public plugin {
 public:
 	illixr_plugin(std::string name_, phonebook* pb_)
@@ -78,33 +74,38 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	return ret;
 }
 
-extern "C" void illixr_write_frame(unsigned int left,
-								   unsigned int right) {
+extern "C" void illixr_write_frame(unsigned int left, unsigned int right) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
-    static unsigned int buffer_to_use = 0U;
+	static unsigned int buffer_to_use = 0U;
 
 	illixr_plugin_obj->sb_eyebuffer.put(illixr_plugin_obj->sb_eyebuffer.allocate<rendered_frame>(
-	    rendered_frame {
-	        std::array<GLuint, 2>{ left, right },
-	        std::array<GLuint, 2>{ buffer_to_use, buffer_to_use }, // .data() deleted FIXME
-            illixr_plugin_obj->prev_pose,
-            illixr_plugin_obj->sample_time,
+		rendered_frame {
+			std::array<GLuint, 2>{ left, right },
+			std::array<GLuint, 2>{ buffer_to_use, buffer_to_use },
+			illixr_plugin_obj->prev_pose,
+			illixr_plugin_obj->sample_time,
 			illixr_plugin_obj->_m_clock->now()
-        }
-    ));
+		}
+	));
 
-    buffer_to_use = (buffer_to_use == 0U) ? 1U : 0U;
+	buffer_to_use = (buffer_to_use == 0U) ? 1U : 0U;
 }
 
 extern "C" int64_t illixr_get_vsync_ns() {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-    switchboard::ptr<const switchboard::event_wrapper<time_point>> vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
-	time_point target_time = vsync_estimate == nullptr ? illixr_plugin_obj->_m_clock->now() + VSYNC_PERIOD : **vsync_estimate;
+
+	switchboard::ptr<const switchboard::event_wrapper<time_point>> vsync_estimate =
+		illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
+
+	time_point target_time = vsync_estimate == nullptr
+		? illixr_plugin_obj->_m_clock->now() + VSYNC_PERIOD
+		: **vsync_estimate;
+
 	return std::chrono::nanoseconds{target_time.time_since_epoch()}.count();
 }
 
 extern "C" int64_t illixr_get_now_ns() {
-	//assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
+	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 	return std::chrono::duration_cast<std::chrono::nanoseconds>((illixr_plugin_obj->_m_clock->now()).time_since_epoch()).count();
 }

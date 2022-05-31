@@ -17,8 +17,6 @@
 #include "ogl/ogl_api.h"
 #include "client/comp_gl_client.h"
 
-#include "../drivers/illixr/illixr_component.h"
-
 /*
  *
  * Swapchain functions.
