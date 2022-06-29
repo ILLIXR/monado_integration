@@ -141,7 +141,8 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 
 	*out_timestamp = now;
 	// out_relation->pose = dh->pose;
-	out_relation->pose = illixr_read_pose();
+	struct xrt_pose pose = illixr_read_pose();
+	out_relation->pose = pose;
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
 	    XRT_SPACE_RELATION_POSITION_VALID_BIT);
@@ -153,8 +154,8 @@ illixr_hmd_get_view_pose(struct xrt_device *xdev,
                         uint32_t view_index,
                         struct xrt_pose *out_pose)
 {
-	struct xrt_pose pose = illixr_read_pose();
-
+	struct xrt_pose pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+	pose.position.z += 0.1f;
 	*out_pose = pose;
 }
 
