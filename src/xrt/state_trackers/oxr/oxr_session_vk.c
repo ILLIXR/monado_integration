@@ -38,5 +38,8 @@ oxr_session_populate_vk(struct oxr_logger *log,
 	sess->compositor = &xcvk->base;
 	sess->create_swapchain = oxr_swapchain_vk_create;
 
+	// HACK FOR ILLIXR
+	sess->sys->xdevs[0]->set_output(sess->sys->xdevs[0], 0, NULL, NULL);
+
 	return XR_SUCCESS;
 }

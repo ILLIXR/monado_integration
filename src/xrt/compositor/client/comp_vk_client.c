@@ -15,6 +15,7 @@
 
 #include "comp_vk_client.h"
 
+#include "../drivers/illixr/illixr_component.h"
 
 /*
  *
@@ -181,6 +182,8 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
                            uint32_t array_size,
                            uint32_t mip_count)
 {
+	static int swapchain_index = 0;
+
 	struct client_vk_compositor *c = client_vk_compositor(xc);
 	VkCommandBuffer cmd_buffer;
 	uint32_t num_images = 3;
@@ -218,6 +221,10 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 	sc->xscfd = xrt_swapchain_fd(xsc);
 
 	for (uint32_t i = 0; i < num_images; i++) {
+		// need to duplicate the FD to use it twice
+		int fd2 = dup(sc->xscfd->images[i].fd);
+		uint64_t size = sc->xscfd->images[i].size;
+
 		ret = vk_create_image_from_fd(
 		    &c->vk, bits, format, width, height, array_size, mip_count,
 		    &sc->xscfd->images[i], &sc->base.images[i],
@@ -225,6 +232,8 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 		if (ret != VK_SUCCESS) {
 			return NULL;
 		}
+
+		illixr_publish_vk_image_handle(fd2, size, format, width, height, num_images, swapchain_index);
 
 		vk_set_image_layout(&c->vk, cmd_buffer, sc->base.images[i], 0,
 		                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -237,6 +246,8 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 	if (ret != VK_SUCCESS) {
 		return NULL;
 	}
+
+	swapchain_index++;
 
 	return &sc->base.base;
 }

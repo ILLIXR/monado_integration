@@ -247,9 +247,9 @@ compositor_end_frame(struct xrt_compositor *xc,
 		// left = &comp_swapchain(xscs[0])->images[image_index[0]];
 		// right = &comp_swapchain(xscs[1])->images[image_index[1]];
 		// comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
-		unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
-		unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
-		illixr_write_frame(left, right);
+		// unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
+		// unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
+		illixr_write_frame(image_index[0], image_index[1]);
 	} else {
 		COMP_ERROR(c, "non-stereo rendering not supported");
 	}

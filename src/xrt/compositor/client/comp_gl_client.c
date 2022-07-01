@@ -179,6 +179,8 @@ client_gl_swapchain_create(struct xrt_compositor *xc,
                            uint32_t array_size,
                            uint32_t mip_count)
 {
+	static int swapchain_index = 0;
+
 	struct client_gl_compositor *c = client_gl_compositor(xc);
 	uint32_t num_images = 3;
 
@@ -244,9 +246,13 @@ client_gl_swapchain_create(struct xrt_compositor *xc,
 			    sc->base.images[i], mip_count, (GLuint)format,
 			    width, height, array_size, sc->base.memory[i], 0);
 		}
+
+		illixr_publish_gl_image_handle(sc->base.images[i], num_images, swapchain_index);
 	}
 	glBindTexture(array_size == 1 ? GL_TEXTURE_2D : GL_TEXTURE_2D_ARRAY,
 	              prev_texture);
+
+	swapchain_index++;
 
 	return &sc->base.base;
 }
