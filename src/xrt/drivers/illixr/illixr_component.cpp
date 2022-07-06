@@ -1,12 +1,6 @@
 extern "C" {
 //#include "ogl/ogl_api.h"
 //#include <GLFW/glfw3.h>
-#include <GL/glew.h>
-#include <X11/X.h>
-#include <X11/Xlib.h>
-#include <vulkan/vulkan.h>
-#include <GL/glx.h>
-#include <GL/glu.h>
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_compositor.h"
 }
@@ -99,6 +93,7 @@ extern "C" void illixr_publish_gl_image_handle(unsigned int handle, int num_imag
 
 
 extern "C" void illixr_publish_vk_image_handle(int fd, uint64_t size, uint64_t format, int width, int height, int num_images, int swapchain_index) {
+	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
 			fd,
