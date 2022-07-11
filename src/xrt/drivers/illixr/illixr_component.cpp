@@ -91,13 +91,13 @@ extern "C" void illixr_publish_gl_image_handle(GLuint handle, int num_images, in
 
 
 
-extern "C" void illixr_publish_vk_image_handle(int fd, size_t size, int64_t format, uint32_t width, uint32_t height, uint32_t num_images, uint32_t swapchain_index) {
+extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, uint32_t swapchain_index) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
 			fd,
-			format,
 			size,
+			format,
 			width,
 			height,
 			num_images,

@@ -233,7 +233,7 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 			return NULL;
 		}
 
-		illixr_publish_vk_image_handle(fd2, size, format, width, height, num_images, swapchain_index);
+		illixr_publish_vk_image_handle(fd2, format, size, width, height, num_images, swapchain_index);
 
 		vk_set_image_layout(&c->vk, cmd_buffer, sc->base.images[i], 0,
 		                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
