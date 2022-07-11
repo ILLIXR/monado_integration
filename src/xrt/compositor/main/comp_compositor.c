@@ -242,13 +242,9 @@ compositor_end_frame(struct xrt_compositor *xc,
 
 	// Stereo!
 	if (num_swapchains == 2) {
-		// struct comp_swapchain_image *right;
-		// struct comp_swapchain_image *left;
-		// left = &comp_swapchain(xscs[0])->images[image_index[0]];
-		// right = &comp_swapchain(xscs[1])->images[image_index[1]];
-		// comp_renderer_frame(c->r, left, layers[0], right, layers[1]);
-		// unsigned int left = xrt_swapchain_gl(xscs[0])->images[image_index[0]];
-		// unsigned int right = xrt_swapchain_gl(xscs[1])->images[image_index[1]];
+		// Only publish the indices of the swapchain images,
+		// which ILLIXR will use to access its own set of images
+		// that have external memory linked to the Monado images.
 		illixr_write_frame(image_index[0], image_index[1]);
 	} else {
 		COMP_ERROR(c, "non-stereo rendering not supported");
