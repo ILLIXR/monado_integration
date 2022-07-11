@@ -2,7 +2,6 @@ extern "C" {
 //#include "ogl/ogl_api.h"
 //#include <GLFW/glfw3.h>
 #include "xrt/xrt_device.h"
-#include "xrt/xrt_compositor.h"
 }
 
 #include <iostream>
