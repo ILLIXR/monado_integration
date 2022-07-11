@@ -96,8 +96,8 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
 			fd,
-			size,
 			format,
+			size,
 			width,
 			height,
 			num_images,
