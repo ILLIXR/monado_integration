@@ -182,7 +182,7 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
                            uint32_t array_size,
                            uint32_t mip_count)
 {
-	static int swapchain_index = 0;
+	static uint32_t swapchain_index = 0;
 
 	struct client_vk_compositor *c = client_vk_compositor(xc);
 	VkCommandBuffer cmd_buffer;
@@ -223,7 +223,7 @@ client_vk_swapchain_create(struct xrt_compositor *xc,
 	for (uint32_t i = 0; i < num_images; i++) {
 		// need to duplicate the FD to use it twice
 		int fd2 = dup(sc->xscfd->images[i].fd);
-		uint64_t size = sc->xscfd->images[i].size;
+		size_t size = sc->xscfd->images[i].size;
 
 		ret = vk_create_image_from_fd(
 		    &c->vk, bits, format, width, height, array_size, mip_count,

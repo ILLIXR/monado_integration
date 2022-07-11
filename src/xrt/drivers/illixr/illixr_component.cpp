@@ -78,7 +78,7 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	return ret;
 }
 
-extern "C" void illixr_publish_gl_image_handle(unsigned int handle, int num_images, int swapchain_index) {
+extern "C" void illixr_publish_gl_image_handle(GLuint handle, int num_images, int swapchain_index) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
@@ -91,7 +91,7 @@ extern "C" void illixr_publish_gl_image_handle(unsigned int handle, int num_imag
 
 
 
-extern "C" void illixr_publish_vk_image_handle(int fd, uint64_t size, uint64_t format, int width, int height, int num_images, int swapchain_index) {
+extern "C" void illixr_publish_vk_image_handle(int fd, size_t size, int64_t format, uint32_t width, uint32_t height, uint32_t num_images, uint32_t swapchain_index) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {

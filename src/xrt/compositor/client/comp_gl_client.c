@@ -179,7 +179,7 @@ client_gl_swapchain_create(struct xrt_compositor *xc,
                            uint32_t array_size,
                            uint32_t mip_count)
 {
-	static int swapchain_index = 0;
+	static uint32_t swapchain_index = 0;
 
 	struct client_gl_compositor *c = client_gl_compositor(xc);
 	uint32_t num_images = 3;
