@@ -17,26 +17,21 @@
 #include <alloca.h>
 #include <sstream>
 #include <string>
+#include <GL/glx.h>
 
 #include "math/m_api.h"
-#include "xrt/xrt_device.h"
 #include "util/u_var.h"
 #include "util/u_misc.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_time.h"
 #include "util/u_distortion_mesh.h"
+#include "xrt/xrt_device.h"
 
 #include "illixr_component.h"
 #include "common/dynamic_lib.hpp"
+#include "common/global_module_defs.hpp"
 #include "common/runtime.hpp"
-
-static constexpr unsigned ILLIXR_RESOLUTION_WIDTH = 2560;
-static constexpr unsigned ILLIXR_RESOLUTION_HEIGHT = 1440;
-static constexpr double ILLIXR_REFRESH_RATE = 120.0f;
-static constexpr double ILLIXR_FOV_DEGREES = 90.0f;
-
-#include <GL/glx.h>
 
 /*
  *
@@ -245,14 +240,14 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = ILLIXR_RESOLUTION_WIDTH;
-	info.display.h_pixels = ILLIXR_RESOLUTION_HEIGHT;
+	info.display.w_pixels = ILLIXR::display_width;
+	info.display.h_pixels = ILLIXR::display_height;
 	info.display.w_meters = 0.14f;
 	info.display.h_meters = 0.07f;
 	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
 	info.lens_vertical_position_meters = 0.07f / 2.0f;
-	info.views[0].fov = ILLIXR_FOV_DEGREES * (M_PI / 180.0f);
-	info.views[1].fov = ILLIXR_FOV_DEGREES * (M_PI / 180.0f);
+	info.views[0].fov = ILLIXR::display_fov_x * (M_PI / 180.0f);
+	info.views[1].fov = ILLIXR::display_fov_y * (M_PI / 180.0f);
 
 	if (!u_device_setup_split_side_by_side(&dh->base, &info)) {
 		DH_ERROR(dh, "Failed to setup basic device info");
@@ -260,9 +255,9 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 		return NULL;
 	}
 
-	// Manually set refresh rate
+	// Set refresh rate
 	dh->base.hmd->screens[0].nominal_frame_interval_ns =
-		(uint64_t) time_s_to_ns(1.0f / ILLIXR_REFRESH_RATE);
+		(uint64_t) time_s_to_ns(1.0f / ILLIXR::display_frequency);
 
 	// Setup variable tracker.
 	u_var_add_root(dh, "ILLIXR", true);

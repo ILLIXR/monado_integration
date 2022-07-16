@@ -2,9 +2,6 @@ extern "C" {
 #include "xrt/xrt_device.h"
 }
 
-#include <array>
-#include <iostream>
-
 #include "common/data_format.hpp"
 #include "common/phonebook.hpp"
 #include "common/plugin.hpp"
@@ -12,10 +9,10 @@ extern "C" {
 #include "common/relative_clock.hpp"
 #include "common/switchboard.hpp"
 
-using namespace ILLIXR;
+#include <array>
+#include <iostream>
 
-static constexpr double ILLIXR_REFRESH_RATE = 120.0f;
-static constexpr duration VSYNC_PERIOD{freq2period(ILLIXR_REFRESH_RATE)};
+using namespace ILLIXR;
 
 /// Interface to switchboard and the rest of the runtime
 class illixr_plugin : public plugin {
@@ -41,7 +38,6 @@ public:
 static illixr_plugin* illixr_plugin_obj = nullptr;
 
 extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
-	// "borrowed" from common/plugin.hpp PLUGIN_MAIN
 	illixr_plugin_obj = new illixr_plugin {"illixr_plugin", pb};
 	illixr_plugin_obj->start();
 	return illixr_plugin_obj;
@@ -99,7 +95,7 @@ extern "C" int64_t illixr_get_vsync_ns() {
 		illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
 
 	time_point target_time = vsync_estimate == nullptr
-		? illixr_plugin_obj->_m_clock->now() + VSYNC_PERIOD
+		? illixr_plugin_obj->_m_clock->now() + display_period
 		: **vsync_estimate;
 
 	return std::chrono::nanoseconds{target_time.time_since_epoch()}.count();
