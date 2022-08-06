@@ -139,13 +139,11 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 		return;
 	}
 
-	int64_t now = time_state_get_now(timekeeping);
-
-	*out_timestamp = now;
-	out_relation->pose = illixr_read_pose();
-
 	// Clear out the relation
 	U_ZERO(out_relation);
+
+	*out_timestamp = time_state_get_now(timekeeping);
+	out_relation->pose = illixr_read_pose();
 
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
