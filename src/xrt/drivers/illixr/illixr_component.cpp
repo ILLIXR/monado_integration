@@ -95,7 +95,7 @@ extern "C" int64_t illixr_get_vsync_ns() {
 		illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
 
 	time_point target_time = vsync_estimate == nullptr
-		? illixr_plugin_obj->_m_clock->now() + display_period
+		? illixr_plugin_obj->_m_clock->now() + display_params::period
 		: **vsync_estimate;
 
 	return std::chrono::nanoseconds{target_time.time_since_epoch()}.count();

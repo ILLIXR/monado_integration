@@ -240,14 +240,14 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = ILLIXR::display_width;
-	info.display.h_pixels = ILLIXR::display_height;
+	info.display.w_pixels = ILLIXR::display_params::width;
+	info.display.h_pixels = ILLIXR::display_params::height;
 	info.display.w_meters = 0.14f;
 	info.display.h_meters = 0.07f;
 	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
 	info.lens_vertical_position_meters = 0.07f / 2.0f;
-	info.views[0].fov = ILLIXR::display_fov_x * (M_PI / 180.0f);
-	info.views[1].fov = ILLIXR::display_fov_y * (M_PI / 180.0f);
+	info.views[0].fov = ILLIXR::display_params::fov_x * (M_PI / 180.0f);
+	info.views[1].fov = ILLIXR::display_params::fov_y * (M_PI / 180.0f);
 
 	if (!u_device_setup_split_side_by_side(&dh->base, &info)) {
 		DH_ERROR(dh, "Failed to setup basic device info");
@@ -257,7 +257,7 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Set refresh rate
 	dh->base.hmd->screens[0].nominal_frame_interval_ns =
-		(uint64_t) time_s_to_ns(1.0f / ILLIXR::display_frequency);
+		(uint64_t) time_s_to_ns(1.0f / ILLIXR::display_params::frequency);
 
 	// Setup variable tracker.
 	u_var_add_root(dh, "ILLIXR", true);
