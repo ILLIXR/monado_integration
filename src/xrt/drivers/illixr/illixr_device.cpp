@@ -261,12 +261,12 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = ILLIXR::display_params::width;
-	info.display.h_pixels = ILLIXR::display_params::height;
-	info.display.w_meters = 0.14f;
-	info.display.h_meters = 0.07f;
-	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
-	info.lens_vertical_position_meters = 0.07f / 2.0f;
+	info.display.w_pixels = ILLIXR::display_params::width_pixels;
+	info.display.h_pixels = ILLIXR::display_params::height_pixels;
+	info.display.w_meters = ILLIXR::display_params::width_meters;
+	info.display.h_meters = ILLIXR::display_params::height_meters;
+	info.lens_horizontal_separation_meters = ILLIXR::display_params::lens_separation;
+	info.lens_vertical_position_meters = ILLIXR::display_params::lens_vertical_position;
 	info.views[0].fov = ILLIXR::display_params::fov_x * (M_PI / 180.0f);
 	info.views[1].fov = ILLIXR::display_params::fov_y * (M_PI / 180.0f);
 
