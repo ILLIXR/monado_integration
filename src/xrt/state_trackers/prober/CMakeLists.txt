@@ -18,7 +18,7 @@ set(PROBER_SOURCE_FILES
 	p_tracking.c
 	)
 
-# Add Illixr
+# Add ILLIXR
 
 if (BUILD_WITH_ILLIXR)
 	list(APPEND PROBER_SOURCE_FILES

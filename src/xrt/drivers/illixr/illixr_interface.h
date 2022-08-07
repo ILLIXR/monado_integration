@@ -18,14 +18,14 @@ extern "C" {
 #define ILLIXR_PID 0x0514
 
 /*!
- * @defgroup drv_illixr illixr driver.
+ * @defgroup drv_illixr ILLIXR driver.
  * @ingroup drv
  *
- * @brief Simple do nothing illixr driver.
+ * @brief Simple do nothing ILLIXR driver.
  */
 
 /*!
- * Create a auto prober for illixr devices.
+ * Create a auto prober for ILLIXR devices.
  *
  * @ingroup drv_illixr
  */
@@ -33,7 +33,7 @@ struct xrt_auto_prober *
 illixr_create_auto_prober(void);
 
 /*!
- * Create a illixr hmd.
+ * Create an ILLIXR hmd.
  *
  * @ingroup drv_illixr
  */
@@ -42,7 +42,7 @@ illixr_hmd_create(const char *path, const char *comp);
 
 
 /*!
- * Probing function for Illixr.
+ * Probing function for ILLIXR.
  *
  * @ingroup drv_hydra
  */

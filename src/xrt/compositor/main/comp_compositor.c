@@ -144,6 +144,7 @@ compositor_wait_vsync_or_time(struct comp_compositor *c, int64_t wake_up_time)
 		wake_up_time = next_vsync;
 	}
 	int64_t wait_duration = wake_up_time - now_ns;
+
 	if (wait_duration <= 0) {
 		// Don't wait at all
 		return ret;
@@ -175,13 +176,28 @@ compositor_wait_frame(struct xrt_compositor *xc,
 		// First frame, we'll just assume we will display immediately
 
 		*predicted_display_period = interval_ns;
-		//c->last_next_display_time = now_ns + interval_ns;
 		c->last_next_display_time = illixr_get_vsync_ns();
 		*predicted_display_time = c->last_next_display_time;
 		return;
 	}
 
-	// First estimate of next display time.
+	// This is the next vsync time
+	c->last_next_display_time = illixr_get_vsync_ns();
+
+	// We have already submitted a frame for it. The following math will
+	// calculate how long to wait to submit for the vsync after that.
+	// | vsync ----------*----------- vsync -------------------------- vsync |
+	// |                 ^
+	// |                 |
+	// |          <we are here>         *
+	// |                                ^
+	// |                                |
+	// |               <we have already submitted for this vsync>
+	// |                                                 *
+	// |                                                 ^
+	// |                                                 |
+	// |                                    <we are waiting till here>
+
 	while (1) {
 
 		int64_t render_time_ns =
@@ -208,7 +224,6 @@ compositor_wait_frame(struct xrt_compositor *xc,
 			    next_display_time - c->last_next_display_time;
 			*predicted_display_time = next_display_time;
 
-			c->last_next_display_time = next_display_time;
 			return;
 		}
 	}
@@ -783,9 +798,10 @@ comp_compositor_create(struct xrt_device *xdev,
 
 	c->settings.flip_y = flip_y;
 	c->last_frame_time_ns = time_state_get_now(c->timekeeping);
-	c->frame_overhead_ns = 4000000;
-	//! @todo set this to an estimate that's better than 6ms
-	c->expected_app_duration_ns = 2000000;
+	// 0.75 ms for timewarp, 1 ms for app time uncertainty, 0.75 ms for buffer
+	c->frame_overhead_ns = 2500000;
+	//! @todo set this to an estimate that's better than 8 ms
+	c->expected_app_duration_ns = 8000000;
 
 
 	// Need to select window backend before creating Vulkan, then

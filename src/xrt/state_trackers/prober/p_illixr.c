@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
- * @brief  Prober code for Illixr.
+ * @brief  Prober code for ILLIXR.
  * @author Fang Lu <fanglu2@illinois.edu>
  * @ingroup st_prober
  */
@@ -13,11 +13,8 @@
 
 #include "illixr/illixr_interface.h"
 
-#include <stdio.h>
-#include <string.h>
-
 /*
- *	Illixr is not an actual hardware device.
+ *	ILLIXR is not an actual hardware device.
  */
 
 // add_device copied from p_prober.c
