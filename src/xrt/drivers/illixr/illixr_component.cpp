@@ -11,7 +11,6 @@ extern "C" {
 #include "common/phonebook.hpp"
 #include "common/switchboard.hpp"
 #include "common/data_format.hpp"
-#include "common/extended_window.hpp"
 #include "common/pose_prediction.hpp"
 #include "common/relative_clock.hpp"
 
@@ -78,7 +77,7 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	return ret;
 }
 
-extern "C" void illixr_publish_gl_image_handle(GLuint handle, int num_images, int swapchain_index) {
+extern "C" void illixr_publish_gl_image_handle(GLuint handle, uint32_t num_images, uint32_t swapchain_index) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
@@ -88,8 +87,6 @@ extern "C" void illixr_publish_gl_image_handle(GLuint handle, int num_images, in
 		}
 	));
 }
-
-
 
 extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, uint32_t swapchain_index) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
