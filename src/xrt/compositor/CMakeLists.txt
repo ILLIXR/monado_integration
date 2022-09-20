@@ -187,6 +187,8 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 		main/comp_layer.c
 		main/comp_layer_renderer.h
 		main/comp_layer_renderer.c
+		main/comp_warp_renderer.h
+		main/comp_warp_renderer.c
 		)
 	target_link_libraries(
 		comp_main

@@ -91,6 +91,9 @@ struct render_shaders
 
 	VkShaderModule layer_vert;
 	VkShaderModule layer_frag;
+
+	VkShaderModule openwarp_mesh_vert;
+	VkShaderModule openwarp_mesh_frag;
 };
 
 /*!
