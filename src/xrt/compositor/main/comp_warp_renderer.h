@@ -89,7 +89,7 @@ struct comp_warp_renderer *
 comp_warp_create(struct vk_bundle *vk, struct render_shaders *s, VkExtent2D extent);
 
 void
-comp_reproject(struct comp_warp_renderer *c);
+comp_warp_reproject(struct comp_warp_renderer *c);
 
 void
 comp_warp_set_pose(struct comp_warp_renderer *c,

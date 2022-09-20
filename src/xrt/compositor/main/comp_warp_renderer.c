@@ -815,7 +815,7 @@ comp_warp_create(struct vk_bundle *vk, struct render_shaders *s, VkExtent2D exte
 }
 
 void
-comp_reproject(struct comp_warp_renderer *c)
+comp_warp_reproject(struct comp_warp_renderer *c)
 {
 	struct vk_bundle *vk = &c->vk;
 
