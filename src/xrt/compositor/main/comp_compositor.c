@@ -351,7 +351,6 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 	bool fast_path = can_do_one_projection_layer_fast_path(c) && !c->mirroring_to_debug_gui && !c->peek;
 	c->base.slot.one_projection_layer_fast_path = fast_path;
 
-
 	u_graphics_sync_unref(&sync_handle);
 
 	if (!c->settings.use_compute) {
@@ -713,6 +712,7 @@ select_instances_extensions(struct comp_compositor *c, struct u_string_list *req
 static bool
 compositor_init_vulkan(struct comp_compositor *c)
 {
+	COMP_INFO(c, "INIT VULKAN");
 	struct vk_bundle *vk = get_vk(c);
 	VkResult ret;
 
@@ -736,6 +736,7 @@ compositor_init_vulkan(struct comp_compositor *c)
 	struct u_string_list *optional_device_extension_list =
 	    u_string_list_create_from_array(optional_device_extensions, ARRAY_SIZE(optional_device_extensions));
 
+	c->settings.log_level = U_LOGGING_TRACE;
 	struct comp_vulkan_arguments vk_args = {
 	    .get_instance_proc_address = vkGetInstanceProcAddr,
 	    .required_instance_version = VK_MAKE_VERSION(1, 0, 0),
@@ -751,6 +752,7 @@ compositor_init_vulkan(struct comp_compositor *c)
 	};
 
 	struct comp_vulkan_results vk_res = {0};
+	COMP_INFO(c, "INIT VK BUNDLE");
 	bool bundle_ret = comp_vulkan_init_bundle(vk, &vk_args, &vk_res);
 
 	u_string_list_destroy(&required_instance_ext_list);
@@ -759,6 +761,7 @@ compositor_init_vulkan(struct comp_compositor *c)
 	u_string_list_destroy(&optional_device_extension_list);
 
 	if (!bundle_ret) {
+		COMP_INFO(c, "INIT VK BUNDLE FAILED");
 		return false;
 	}
 
@@ -983,8 +986,10 @@ compositor_try_window(struct comp_compositor *c, struct comp_target *ct)
 static bool
 compositor_init_window_pre_vulkan(struct comp_compositor *c)
 {
+	COMP_INFO(c, "WINDOW PREVULKAN");
 	// Nothing to do for nvidia and vk_display.
 	if (c->settings.window_type == WINDOW_DIRECT_NVIDIA || c->settings.window_type == WINDOW_VK_DISPLAY) {
+		COMP_INFO(c, "NVIDIA/VK_DISPLAY");
 		return true;
 	}
 
@@ -1010,6 +1015,7 @@ compositor_init_window_pre_vulkan(struct comp_compositor *c)
 #endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
 		if (compositor_try_window(c, comp_window_xcb_create(c))) {
+			COMP_INFO(c, "WINDOW XCB");
 			c->settings.window_type = WINDOW_XCB;
 			COMP_DEBUG(c, "Using VK_PRESENT_MODE_IMMEDIATE_KHR for xcb window")
 			c->settings.present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
@@ -1133,6 +1139,7 @@ compositor_init_shaders(struct comp_compositor *c)
 static bool
 compositor_init_renderer(struct comp_compositor *c)
 {
+	COMP_INFO(c, "INIT RENDERER");
 	if (!render_resources_init(&c->nr, &c->shaders, get_vk(c), c->xdev)) {
 		return false;
 	}
@@ -1166,7 +1173,7 @@ xrt_gfx_provider_create_system(struct xrt_device *xdev, struct xrt_system_compos
 	c->frame.rendering.id = -1;
 	c->xdev = xdev;
 
-	COMP_DEBUG(c, "Doing init %p", (void *)c);
+	COMP_INFO(c, "Doing init %p", (void *)c);
 
 	// Do this as early as possible.
 	comp_base_init(&c->base);
@@ -1202,6 +1209,7 @@ xrt_gfx_provider_create_system(struct xrt_device *xdev, struct xrt_system_compos
 	// window/swapchain.
 
 	// clang-format off
+	// Don't need a Monado window in Vulkan
 	if (!compositor_check_and_prepare_xdev(c, xdev) ||
 	    !compositor_check_vulkan_caps(c) ||
 	    !compositor_init_window_pre_vulkan(c) ||

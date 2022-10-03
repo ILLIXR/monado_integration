@@ -253,7 +253,7 @@ comp_window_xcb_init(struct comp_target *ct)
 	if (ct->c->settings.fullscreen)
 		comp_window_xcb_set_full_screen(w_xcb);
 
-	xcb_map_window(w_xcb->connection, w_xcb->window);
+	// xcb_map_window(w_xcb->connection, w_xcb->window);
 
 	return true;
 }
