@@ -46,6 +46,7 @@
 #include <math.h>
 #include <inttypes.h>
 
+#include "../drivers/illixr/illixr_component.h"
 
 /*
  *
@@ -889,80 +890,21 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	struct comp_target *ct = c->target;
 
 	struct render_gfx_target_resources *rtr = &r->rtr_array[r->acquired_buffer];
-	bool one_projection_layer_fast_path = c->base.slot.one_projection_layer_fast_path;
+	// We mark here to include the layer rendering in the GPU time.
+	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
 
-	// No fast path, standard layer renderer path.
-	if (!one_projection_layer_fast_path) {
-		// We mark here to include the layer rendering in the GPU time.
-		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+	renderer_get_view_projection(r);
+	COMP_SPEW(c, "LAYER RENDERER DRAW STARTED");
+	comp_layer_renderer_draw(r->lr); // arranges images for each eye
+	COMP_SPEW(c, "LAYER RENDERER DRAW FINISHED");
 
-		renderer_get_view_projection(r);
-		comp_layer_renderer_draw(r->lr);
+	// Insert ILLIXR: 
+	COMP_SPEW(c, "WRITE TO FRAME STARTED");
+	illixr_write_frame(0, 0);
+	COMP_SPEW(c, "WRITE TO FRAME FINISHED");
 
-		VkSampler src_samplers[2] = {
-		    r->lr->framebuffers[0].sampler,
-		    r->lr->framebuffers[1].sampler,
-
-		};
-		VkImageView src_image_views[2] = {
-		    r->lr->framebuffers[0].view,
-		    r->lr->framebuffers[1].view,
-		};
-
-		struct xrt_normalized_rect src_norm_rects[2] = {
-		    {.x = 0, .y = 0, .w = 1, .h = 1},
-		    {.x = 0, .y = 0, .w = 1, .h = 1},
-		};
-
-		renderer_build_rendering(r, rr, rtr, src_samplers, src_image_views, src_norm_rects);
-
-		renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-		return;
-	}
-
-
-	/*
-	 * Fast path.
-	 */
-
-	XRT_MAYBE_UNUSED const uint32_t layer_count = c->base.slot.layer_count;
-	assert(layer_count >= 1);
-
-	int i = 0;
-	const struct comp_layer *layer = &c->base.slot.layers[i];
-
-	switch (layer->data.type) {
-	case XRT_LAYER_STEREO_PROJECTION: {
-		const struct xrt_layer_stereo_projection_data *stereo = &layer->data.stereo;
-		const struct xrt_layer_projection_view_data *lvd = &stereo->l;
-		const struct xrt_layer_projection_view_data *rvd = &stereo->r;
-
-		do_gfx_mesh_and_proj(r, rr, rtr, layer, lvd, rvd);
-
-		renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-		// We mark afterwards to not include CPU time spent.
-		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
-	} break;
-
-	case XRT_LAYER_STEREO_PROJECTION_DEPTH: {
-		const struct xrt_layer_stereo_projection_depth_data *stereo = &layer->data.stereo_depth;
-		const struct xrt_layer_projection_view_data *lvd = &stereo->l;
-		const struct xrt_layer_projection_view_data *rvd = &stereo->r;
-
-		do_gfx_mesh_and_proj(r, rr, rtr, layer, lvd, rvd);
-
-		renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-		// We mark afterwards to not include CPU time spent.
-		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
-	} break;
-
-	default: assert(false);
-	}
+	return;
 }
-
 
 /*
  *
@@ -1889,44 +1831,9 @@ comp_renderer_draw(struct comp_renderer *r)
 {
 	COMP_TRACE_MARKER();
 
-	struct comp_target *ct = r->c->target;
 	struct comp_compositor *c = r->c;
-
-
-	assert(c->frame.rendering.id == -1);
-
-	c->frame.rendering = c->frame.waited;
-	c->frame.waited.id = -1;
-
-	comp_target_mark_begin(ct, c->frame.rendering.id, os_monotonic_get_ns());
-
-	// Are we ready to render? No - skip rendering.
-	if (!comp_target_check_ready(r->c->target)) {
-		// Need to emulate rendering for the timing.
-		//! @todo This should be discard.
-		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
-		return;
-	}
-
-	comp_target_flush(ct);
-
-	comp_target_update_timings(ct);
-
-	if (r->acquired_buffer < 0) {
-		// Ensures that renderings are created.
-		renderer_acquire_swapchain_image(r);
-	}
-
-	comp_target_update_timings(ct);
-
-	bool use_compute = r->settings->use_compute;
 	struct render_gfx rr = {0};
-	struct render_compute crc = {0};
-	if (use_compute) {
-		dispatch_compute(r, &crc);
-	} else {
-		dispatch_graphics(r, &rr);
-	}
+	dispatch_graphics(r, &rr);
 
 #ifdef XRT_FEATURE_WINDOW_PEEK
 	if (c->peek) {
@@ -1948,20 +1855,12 @@ comp_renderer_draw(struct comp_renderer *r)
 	}
 #endif
 
+	// Monado presents the frame here, which we don't need with ILLIXR
+	/*
 	renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns,
 	                                 c->frame.rendering.present_slop_ns);
-
-	// Save for timestamps below.
-	uint64_t frame_id = c->frame.rendering.id;
-
-	// Clear the frame.
-	c->frame.rendering.id = -1;
-
-	mirror_to_debug_gui_fixup_ui_state(r);
-	if (can_mirror_to_debug_gui(r)) {
-		mirror_to_debug_gui_do_blit(r);
-	}
-
+	*/
+	
 	/*
 	 * This fixes a lot of validation issues as it makes sure that the
 	 * command buffer has completed and all resources referred by it can
@@ -1969,39 +1868,9 @@ comp_renderer_draw(struct comp_renderer *r)
 	 *
 	 * This is done after a swap so isn't time critical.
 	 */
+	COMP_SPEW(c, "WAITING FOR GPU IDLE");
 	renderer_wait_gpu_idle(r);
-
-
-	/*
-	 * Get timestamps of GPU work (if available).
-	 */
-
-	uint64_t gpu_start_ns, gpu_end_ns;
-	if (render_resources_get_timestamps(&c->nr, &gpu_start_ns, &gpu_end_ns)) {
-		uint64_t now_ns = os_monotonic_get_ns();
-		comp_target_info_gpu(ct, frame_id, gpu_start_ns, gpu_end_ns, now_ns);
-	}
-
-
-	/*
-	 * Free resources.
-	 */
-
-	if (use_compute) {
-		render_compute_close(&crc);
-	} else {
-		render_gfx_close(&rr);
-	}
-
-
-	/*
-	 * For direct mode this makes us wait until the last frame has been
-	 * actually shown to the user, this avoids us missing that we have
-	 * missed a frame and miss-predicting the next frame.
-	 */
-	renderer_acquire_swapchain_image(r);
-
-	comp_target_update_timings(ct);
+	COMP_SPEW(c, "FINISHED WAITING");
 }
 
 void

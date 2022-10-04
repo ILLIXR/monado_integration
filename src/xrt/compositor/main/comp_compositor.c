@@ -226,9 +226,7 @@ do_graphics_layers(struct comp_compositor *c)
 
 	comp_renderer_destroy_layers(c->r);
 
-	if (c->base.slot.one_projection_layer_fast_path) {
-		return;
-	}
+	COMP_SPEW(c, "LAYER COUNT %d", layer_count);
 
 	comp_renderer_allocate_layers(c->r, layer_count);
 
@@ -350,14 +348,15 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 	 */
 	bool fast_path = can_do_one_projection_layer_fast_path(c) && !c->mirroring_to_debug_gui && !c->peek;
 	c->base.slot.one_projection_layer_fast_path = fast_path;
-
+	
+	COMP_SPEW(c, "CAN DO PROJECTION at %8.3fms", ts_ms());
 	u_graphics_sync_unref(&sync_handle);
 
-	if (!c->settings.use_compute) {
-		do_graphics_layers(c);
-	}
-
+	COMP_SPEW(c, "RENDERER DRAW START at %8.3fms", ts_ms());
+	do_graphics_layers(c);
 	comp_renderer_draw(c->r);
+
+	COMP_SPEW(c, "RENDERER DRAW FINISH at %8.3fms", ts_ms());
 
 	u_frame_times_widget_push_sample(&c->compositor_frame_times, os_monotonic_get_ns());
 
@@ -369,7 +368,7 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 	COMP_SPEW(c, "LAYER_COMMIT finished drawing at %8.3fms", ns_to_ms(c->last_frame_time_ns));
 
 	// Now is a good point to garbage collect.
-	comp_swapchain_garbage_collect(&c->base.cscgc);
+	// comp_swapchain_garbage_collect(&c->base.cscgc);
 
 	return XRT_SUCCESS;
 }

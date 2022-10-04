@@ -70,8 +70,8 @@ comp_settings_init(struct comp_settings *s, struct xrt_device *xdev)
 	s->present_mode = VK_PRESENT_MODE_FIFO_KHR;
 	s->window_type = WINDOW_AUTO;
 	s->fullscreen = debug_get_bool_option_xcb_fullscreen();
-	s->preferred.width = xdev->hmd->screens[0].w_pixels;
-	s->preferred.height = xdev->hmd->screens[0].h_pixels;
+	s->preferred.width = 2560 / 2;
+	s->preferred.height = 1440 / 2;
 	s->nominal_frame_interval_ns = interval_ns;
 	s->log_level = debug_get_log_option_log();
 	s->print_modes = debug_get_bool_option_print_modes();
