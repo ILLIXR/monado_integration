@@ -103,15 +103,15 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 	));
 }
 
-extern "C" void illixr_write_frame(int left,
-								   int right) {
+extern "C" void illixr_write_frame(GLuint left,
+								   GLuint right) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
     static unsigned int buffer_to_use = 0U;
 
 	illixr_plugin_obj->sb_eyebuffer.put(illixr_plugin_obj->sb_eyebuffer.allocate<rendered_frame>(
 	    rendered_frame {
-	        std::array<int, 2>{ left, right },
+	        std::array<GLuint, 2>{ left, right },
 	        std::array<GLuint, 2>{ buffer_to_use, buffer_to_use }, // .data() deleted FIXME
             illixr_plugin_obj->prev_pose,
             illixr_plugin_obj->sample_time,
