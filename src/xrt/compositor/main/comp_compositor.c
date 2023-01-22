@@ -1207,7 +1207,7 @@ xrt_gfx_provider_create_system(struct xrt_device *xdev, struct xrt_system_compos
 	// and finally the renderer is created which renders to
 	// window/swapchain.
 
-	// clang-format off
+	// clang-format offgdb wat
 	// Don't need a Monado window in Vulkan
 	if (!compositor_check_and_prepare_xdev(c, xdev) ||
 	    !compositor_check_vulkan_caps(c) ||

@@ -1831,8 +1831,36 @@ comp_renderer_draw(struct comp_renderer *r)
 {
 	COMP_TRACE_MARKER();
 
+	struct comp_target *ct = r->c->target;
 	struct comp_compositor *c = r->c;
 	struct render_gfx rr = {0};
+
+	assert(c->frame.rendering.id == -1);
+
+	c->frame.rendering = c->frame.waited;
+	c->frame.waited.id = -1;
+
+	comp_target_mark_begin(ct, c->frame.rendering.id, os_monotonic_get_ns());
+
+	// Are we ready to render? No - skip rendering.
+	if (!comp_target_check_ready(r->c->target)) {
+		// Need to emulate rendering for the timing.
+		//! @todo This should be discard.
+		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+		return;
+	}
+
+	comp_target_flush(ct);
+
+	comp_target_update_timings(ct);
+
+	if (r->acquired_buffer < 0) {
+		// Ensures that renderings are created.
+		renderer_acquire_swapchain_image(r);
+	}
+
+	comp_target_update_timings(ct);
+
 	dispatch_graphics(r, &rr);
 
 #ifdef XRT_FEATURE_WINDOW_PEEK
@@ -1855,12 +1883,40 @@ comp_renderer_draw(struct comp_renderer *r)
 	}
 #endif
 
-	// Monado presents the frame here, which we don't need with ILLIXR
-	/*
-	renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns,
-	                                 c->frame.rendering.present_slop_ns);
-	*/
+	// Monado presents the frame here, but we want to control when it presents.
+	// renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns, c->frame.rendering.present_slop_ns);
+
+	assert(r->c->frame.rendering.id >= 0);
+	uint64_t render_complete_signal_value = (uint64_t)r->c->frame.rendering.id;
+
+	VkResult ret = comp_target_present(        //
+	    r->c->target,                 //
+	    r->c->base.vk.queue,          //
+	    r->acquired_buffer,           //
+	    render_complete_signal_value, //
+	    c->frame.rendering.desired_present_time_ns,      //
+	    c->frame.rendering.present_slop_ns);             //
+	r->acquired_buffer = -1;
+
+	if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+		renderer_resize(r);
+		return;
+	}
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(r->c, "vk_swapchain_present: %s", vk_result_string(ret));
+	}
 	
+	// Save for timestamps below.
+	uint64_t frame_id = c->frame.rendering.id;
+
+	// Clear the frame.
+	c->frame.rendering.id = -1;
+
+	mirror_to_debug_gui_fixup_ui_state(r);
+	if (can_mirror_to_debug_gui(r)) {
+		mirror_to_debug_gui_do_blit(r);
+	}
+
 	/*
 	 * This fixes a lot of validation issues as it makes sure that the
 	 * command buffer has completed and all resources referred by it can
@@ -1868,9 +1924,35 @@ comp_renderer_draw(struct comp_renderer *r)
 	 *
 	 * This is done after a swap so isn't time critical.
 	 */
-	COMP_SPEW(c, "WAITING FOR GPU IDLE");
 	renderer_wait_gpu_idle(r);
-	COMP_SPEW(c, "FINISHED WAITING");
+
+
+	/*
+	 * Get timestamps of GPU work (if available).
+	 */
+
+	uint64_t gpu_start_ns, gpu_end_ns;
+	if (render_resources_get_timestamps(&c->nr, &gpu_start_ns, &gpu_end_ns)) {
+		uint64_t now_ns = os_monotonic_get_ns();
+		comp_target_info_gpu(ct, frame_id, gpu_start_ns, gpu_end_ns, now_ns);
+	}
+
+
+	/*
+	 * Free resources.
+	 */
+	render_gfx_close(&rr);
+
+
+	/*
+	 * For direct mode this makes us wait until the last frame has been
+	 * actually shown to the user, this avoids us missing that we have
+	 * missed a frame and miss-predicting the next frame.
+	 */
+	renderer_acquire_swapchain_image(r);
+
+	comp_target_update_timings(ct);
+
 }
 
 void
