@@ -894,14 +894,10 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
 
 	renderer_get_view_projection(r);
-	COMP_SPEW(c, "LAYER RENDERER DRAW STARTED");
 	comp_layer_renderer_draw(r->lr); // arranges images for each eye
-	COMP_SPEW(c, "LAYER RENDERER DRAW FINISHED");
 
 	// Insert ILLIXR: 
-	COMP_SPEW(c, "WRITE TO FRAME STARTED");
 	illixr_write_frame(0, 0);
-	COMP_SPEW(c, "WRITE TO FRAME FINISHED");
 
 	return;
 }
