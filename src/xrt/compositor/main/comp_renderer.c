@@ -1831,8 +1831,35 @@ comp_renderer_draw(struct comp_renderer *r)
 {
 	COMP_TRACE_MARKER();
 
+	struct comp_target *ct = r->c->target;
 	struct comp_compositor *c = r->c;
 	struct render_gfx rr = {0};
+
+	assert(c->frame.rendering.id == -1);
+
+	c->frame.rendering = c->frame.waited;
+	c->frame.waited.id = -1;
+
+	comp_target_mark_begin(ct, c->frame.rendering.id, os_monotonic_get_ns());
+
+	// Are we ready to render? No - skip rendering.
+	if (!comp_target_check_ready(r->c->target)) {
+		// Need to emulate rendering for the timing.
+		//! @todo This should be discard.
+		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+		return;
+	}
+
+	comp_target_flush(ct);
+
+	comp_target_update_timings(ct);
+
+	if (r->acquired_buffer < 0) {
+		// Ensures that renderings are created.
+		renderer_acquire_swapchain_image(r);
+	}
+
+	comp_target_update_timings(ct);
 	dispatch_graphics(r, &rr);
 
 #ifdef XRT_FEATURE_WINDOW_PEEK
