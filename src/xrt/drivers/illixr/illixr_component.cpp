@@ -27,6 +27,7 @@ public:
 		, sb_pose{pb->lookup_impl<pose_prediction>()}
 		, _m_clock{pb->lookup_impl<RelativeClock>()}
 		, sb_image_handle{sb->get_writer<image_handle>("image_handle")}
+		, sb_semaphore_handle{sb->get_writer<semaphore_handle>("semaphore_handle")}
 		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
 		, sb_vsync_estimate{sb->get_reader<switchboard::event_wrapper<time_point>>("vsync_estimate")}
 	{}
@@ -35,6 +36,7 @@ public:
 	const std::shared_ptr<pose_prediction> sb_pose;
 	std::shared_ptr<RelativeClock> _m_clock;
 	switchboard::writer<image_handle> sb_image_handle;
+	switchboard::writer<semaphore_handle> sb_semaphore_handle;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
 	switchboard::reader<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
 	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
@@ -77,19 +79,28 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	return ret;
 }
 
-extern "C" void illixr_publish_gl_image_handle(GLuint handle, uint32_t num_images, uint32_t swapchain_index) {
+extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, int usage) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
-		image_handle {
-			handle,
-			num_images,
-			swapchain_index
+	
+	swapchain_usage image_usage;
+	switch (usage) {
+		case -1: {
+			image_usage = swapchain_usage::RENDER;
+			break;
 		}
-	));
-}
+		case 0: {
+			image_usage = swapchain_usage::LEFT_SWAPCHAIN;
+			break;
+		}
+		case 1: {
+			image_usage = swapchain_usage::RIGHT_SWAPCHAIN;
+			break;
+		}
+		default: {
+			assert(false && "Invalid swapchain usage!");
+		}
+	}
 
-extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, uint32_t swapchain_index) {
-	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 	illixr_plugin_obj->sb_image_handle.put(illixr_plugin_obj->sb_image_handle.allocate<image_handle>(
 		image_handle {
 			fd,
@@ -98,7 +109,17 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 			width,
 			height,
 			num_images,
-			swapchain_index
+			image_usage
+		}
+	));
+}
+
+extern "C" void illixr_publish_vk_semaphore_handle(int fd) {
+	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
+	illixr_plugin_obj->sb_semaphore_handle.put(illixr_plugin_obj->sb_semaphore_handle.allocate<semaphore_handle>(
+		semaphore_handle {
+			fd,
+			semaphore_usage::PRESENTATION_READY
 		}
 	));
 }

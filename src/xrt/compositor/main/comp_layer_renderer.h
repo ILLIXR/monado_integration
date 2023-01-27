@@ -29,6 +29,16 @@ struct comp_layer_renderer
 		VkFramebuffer handle;
 	} framebuffers[2];
 
+	// ILLIXR should write to this texture,
+	// which is then read by the renderer.
+	struct
+	{
+		VkImage image;
+		VkDeviceMemory memory;
+		VkImageView view;
+		VkSampler sampler;
+	} illixr_images[2];
+
 	VkRenderPass render_pass;
 
 	VkExtent2D extent;

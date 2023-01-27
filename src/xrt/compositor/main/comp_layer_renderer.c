@@ -412,6 +412,88 @@ _render_eye(struct comp_layer_renderer *self,
 }
 
 static bool
+_init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPass rp, uint32_t eye)
+{
+	struct vk_bundle *vk = self->vk;
+
+	VkImageUsageFlags usage =                 //
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | //
+	    VK_IMAGE_USAGE_SAMPLED_BIT |          //
+	    VK_IMAGE_USAGE_TRANSFER_SRC_BIT;      //
+
+	/*
+	VkResult res = vk_create_image_simple(vk, self->extent, format, usage, &self->framebuffers[eye].memory,
+	                                      &self->framebuffers[eye].image);
+	vk_check_error("vk_create_image_simple", res, false);
+	*/
+
+	VkExternalMemoryImageCreateInfo external_memory_image_create_info = {VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO};
+	external_memory_image_create_info.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
+	VkImageCreateInfo imageCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+	imageCreateInfo.pNext         = &external_memory_image_create_info;
+	imageCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
+	imageCreateInfo.format        = format;
+	imageCreateInfo.mipLevels     = 1;
+	imageCreateInfo.arrayLayers   = 1;
+	imageCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.extent.depth  = 1;
+	imageCreateInfo.extent.width  = self->extent.width;
+	imageCreateInfo.extent.height = self->extent.height;
+	imageCreateInfo.usage         = usage;
+	vk->vkCreateImage(vk->device, &imageCreateInfo, NULL, &self->framebuffers[eye].image);
+
+	VkMemoryRequirements memReqs = {};
+	vk->vkGetImageMemoryRequirements(vk->device, self->framebuffers[eye].image, &memReqs);
+
+	VkExportMemoryAllocateInfo exportAllocInfo = {
+		VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO, NULL,
+		VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
+	VkMemoryAllocateInfo memAllocInfo = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &exportAllocInfo};
+
+	VkDeviceSize allocationSize = {0};
+	memAllocInfo.allocationSize = allocationSize = memReqs.size;
+	
+	uint32_t memoryTypeIndex = UINT32_MAX;
+	bool bret = vk_get_memory_type(          //
+	    vk,                                  // vk_bundle
+	    memReqs.memoryTypeBits,  // type_bits
+	    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, // memory_props
+	    &memoryTypeIndex);                 // out_type_id
+	if (!bret) {
+		return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+	}
+
+	memAllocInfo.memoryTypeIndex = memoryTypeIndex;
+	vk->vkAllocateMemory(vk->device, &memAllocInfo, NULL, &self->framebuffers[eye].memory);
+	vk->vkBindImageMemory(vk->device, self->framebuffers[eye].image, self->framebuffers[eye].memory, 0);
+
+	int fd = 0;
+	VkMemoryGetFdInfoKHR memoryFdInfo = {VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR, NULL,
+		                                  self->framebuffers[eye].memory,
+		                                  VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
+	vk->vkGetMemoryFdKHR(vk->device, &memoryFdInfo, &fd);
+
+	illixr_publish_vk_image_handle(fd, format, allocationSize, self->extent.width, self->extent.height, 1, eye);
+
+	vk_create_sampler(vk, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, &self->framebuffers[eye].sampler);
+
+	VkImageSubresourceRange subresource_range = {
+	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+	    .baseMipLevel = 0,
+	    .levelCount = 1,
+	    .baseArrayLayer = 0,
+	    .layerCount = 1,
+	};
+
+	VkResult res = vk_create_view(vk, self->framebuffers[eye].image, VK_IMAGE_VIEW_TYPE_2D, format, subresource_range,
+	                     &self->framebuffers[eye].view);
+
+	vk_check_error("vk_create_view", res, false);
+
+	return true;
+}
+
+static bool
 _init_frame_buffer(struct comp_layer_renderer *self, VkFormat format, VkRenderPass rp, uint32_t eye)
 {
 	struct vk_bundle *vk = self->vk;
@@ -564,6 +646,8 @@ _init(struct comp_layer_renderer *self,
 
 	for (uint32_t i = 0; i < 2; i++)
 		if (!_init_frame_buffer(self, format, self->render_pass, i))
+			return false;
+		if (!_init_illixr_image(self, format, self->render_pass, i))
 			return false;
 
 	if (!_init_descriptor_layout(self))

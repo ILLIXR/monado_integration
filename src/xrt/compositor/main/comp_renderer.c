@@ -672,7 +672,6 @@ renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineSt
 	}
 #endif
 
-
 	VkSubmitInfo comp_submit_info = {
 	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 	    .pNext = next,
@@ -902,6 +901,27 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	COMP_SPEW(c, "WRITE TO FRAME STARTED");
 	illixr_write_frame(0, 0);
 	COMP_SPEW(c, "WRITE TO FRAME FINISHED");
+
+	VkSampler src_samplers[2] = {
+		    r->lr->illixr_images[0].sampler,
+		    r->lr->illixr_images[1].sampler,
+	};
+
+	VkImageView src_image_views[2] = {
+		r->lr->illixr_images[0].view,
+		r->lr->illixr_images[1].view,
+	};
+
+	struct xrt_normalized_rect src_norm_rects[2] = {
+		    {.x = 0, .y = 0, .w = 1, .h = 1},
+		    {.x = 0, .y = 0, .w = 1, .h = 1},
+	};
+
+	renderer_build_rendering(r, rr, rtr, src_samplers, src_image_views, src_norm_rects);
+
+	renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+
 
 	return;
 }
@@ -1884,7 +1904,7 @@ comp_renderer_draw(struct comp_renderer *r)
 #endif
 
 	// Monado presents the frame here, but we want to control when it presents.
-	// renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns, c->frame.rendering.present_slop_ns);
+	renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns, c->frame.rendering.present_slop_ns);
 
 	assert(r->c->frame.rendering.id >= 0);
 	uint64_t render_complete_signal_value = (uint64_t)r->c->frame.rendering.id;
