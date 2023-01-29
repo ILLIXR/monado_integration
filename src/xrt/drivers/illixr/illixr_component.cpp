@@ -84,16 +84,20 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 	
 	swapchain_usage image_usage;
 	switch (usage) {
-		case -1: {
-			image_usage = swapchain_usage::RENDER;
-			break;
-		}
 		case 0: {
 			image_usage = swapchain_usage::LEFT_SWAPCHAIN;
 			break;
 		}
 		case 1: {
 			image_usage = swapchain_usage::RIGHT_SWAPCHAIN;
+			break;
+		}
+		case 2: {
+			image_usage = swapchain_usage::LEFT_RENDER;
+			break;
+		}
+		case 3: {
+			image_usage = swapchain_usage::RIGHT_RENDER;
 			break;
 		}
 		default: {
@@ -114,12 +118,28 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 	));
 }
 
-extern "C" void illixr_publish_vk_semaphore_handle(int fd) {
+extern "C" void illixr_publish_vk_semaphore_handle(int fd, int usage) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
+	
+	semaphore_usage sem_usage;
+	switch (usage) {
+		case 0: {
+			sem_usage = semaphore_usage::LEFT_RENDER_COMPLETE;
+			break;
+		}
+		case 1: {
+			sem_usage = semaphore_usage::RIGHT_RENDER_COMPLETE;
+			break;
+		}
+		default: {
+			assert(false && "Invalid swapchain usage!");
+		}
+	}
+
 	illixr_plugin_obj->sb_semaphore_handle.put(illixr_plugin_obj->sb_semaphore_handle.allocate<semaphore_handle>(
 		semaphore_handle {
 			fd,
-			semaphore_usage::PRESENTATION_READY
+			sem_usage
 		}
 	));
 }
