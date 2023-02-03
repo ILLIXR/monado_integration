@@ -921,8 +921,6 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 
 	renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-
-
 	return;
 }
 
@@ -1909,22 +1907,22 @@ comp_renderer_draw(struct comp_renderer *r)
 	assert(r->c->frame.rendering.id >= 0);
 	uint64_t render_complete_signal_value = (uint64_t)r->c->frame.rendering.id;
 
-	VkResult ret = comp_target_present(        //
-	    r->c->target,                 //
-	    r->c->base.vk.queue,          //
-	    r->acquired_buffer,           //
-	    render_complete_signal_value, //
-	    c->frame.rendering.desired_present_time_ns,      //
-	    c->frame.rendering.present_slop_ns);             //
-	r->acquired_buffer = -1;
+	// VkResult ret = comp_target_present(        //
+	//     r->c->target,                 //
+	//     r->c->base.vk.queue,          //
+	//     r->acquired_buffer,           //
+	//     render_complete_signal_value, //
+	//     c->frame.rendering.desired_present_time_ns,      //
+	//     c->frame.rendering.present_slop_ns);             //
+	// r->acquired_buffer = -1;
 
-	if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
-		renderer_resize(r);
-		return;
-	}
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vk_swapchain_present: %s", vk_result_string(ret));
-	}
+	// if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+	// 	renderer_resize(r);
+	// 	return;
+	// }
+	// if (ret != VK_SUCCESS) {
+	// 	COMP_ERROR(r->c, "vk_swapchain_present: %s", vk_result_string(ret));
+	// }
 	
 	// Save for timestamps below.
 	uint64_t frame_id = c->frame.rendering.id;

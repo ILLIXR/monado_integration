@@ -23,7 +23,7 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "illixr_component.h"
+#include "../drivers/illixr/illixr_component.h"
 
 /*
  *
@@ -610,9 +610,11 @@ target_fini_semaphores(struct comp_target_swapchain *cts)
 		cts->base.semaphores.render_complete = VK_NULL_HANDLE;
 	}
 
-	if (cts->base.semaphores.illixr_complete != VK_NULL_HANDLE) {
-		vk->vkDestroySemaphore(vk->device, cts->base.semaphores.illixr_complete, NULL);
-		cts->base.semaphores.illixr_complete = VK_NULL_HANDLE;
+	for (int eye = 0; eye < 2; eye++) {
+		if (cts->base.semaphores.illixr_complete[eye] != VK_NULL_HANDLE) {
+			vk->vkDestroySemaphore(vk->device, cts->base.semaphores.illixr_complete[eye], NULL);
+			cts->base.semaphores.illixr_complete[eye] = VK_NULL_HANDLE;
+		}
 	}
 }
 
@@ -652,10 +654,10 @@ target_init_semaphores(struct comp_target_swapchain *cts)
 
 	bool                                  found = false;
 	VkExternalSemaphoreHandleTypeFlagBits compatible_semaphore_type;
-	for (size_t i = 0; i < 5; i++)
+	for (size_t i = 0; i < 2; i++)
 	{
 		external_semaphore_info.handleType = flags[i];
-		vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(vk->physical_device, &external_semaphore_info, &external_semaphore_props);
+		vk->vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(vk->physical_device, &external_semaphore_info, &external_semaphore_props);
 		if (external_semaphore_props.compatibleHandleTypes & flags[i] && 
 			external_semaphore_props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
 		{
@@ -677,23 +679,26 @@ target_init_semaphores(struct comp_target_swapchain *cts)
 		.pNext = &export_info,
 	};
 
-	ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &cts->base.semaphores.illixr_complete);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(cts->base.c, "vkCreateSemaphore: %s", vk_result_string(ret));
+	for (int eye = 0; eye < 2; eye++) {
+		ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &cts->base.semaphores.illixr_complete[eye]);
+		if (ret != VK_SUCCESS) {
+			COMP_ERROR(cts->base.c, "vkCreateSemaphore: %s", vk_result_string(ret));
+		}
+
+		VkSemaphoreGetFdInfoKHR fd_info = {
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+			.handleType = compatible_semaphore_type,
+			.semaphore = cts->base.semaphores.illixr_complete[eye],
+		};
+
+		int fd;
+		ret = vk->vkGetSemaphoreFdKHR(vk->device, &fd_info, &fd);
+		if (ret != VK_SUCCESS) {
+			COMP_ERROR(cts->base.c, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
+		}
+
+		illixr_publish_vk_semaphore_handle(fd, eye);
 	}
-
-	VkSemaphoreGetFdInfoKHR fd_info = {
-		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
-		.handleType = compatible_semaphore_type,
-	};
-
-	int fd;
-	ret = vk->vkGetSemaphoreFdKHR(vk->device, &fd_info, &fd);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(cts->base.c, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
-	}
-
-	illixr_publish_vk_semaphore_handle(fd);
 }
 
 
@@ -919,13 +924,15 @@ comp_target_swapchain_present(struct comp_target *ct,
 	    .pTimes = &times,
 	};
 
-	VkSemaphore wait_semaphores[] = {cts->base.semaphores.render_complete, cts->base.semaphores.illixr_complete};
+	VkSemaphore wait_semaphores[] = {cts->base.semaphores.render_complete, 
+									 cts->base.semaphores.illixr_complete[0], 
+									 cts->base.semaphores.illixr_complete[1]};
 
 	VkPresentInfoKHR presentInfo = {
 	    .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 	    .pNext = vk->has_GOOGLE_display_timing ? &timings : NULL,
-	    .waitSemaphoreCount = 2,
-	    .pWaitSemaphores = wait_semaphores,
+	    .waitSemaphoreCount = 1,
+	    .pWaitSemaphores = &cts->base.semaphores.render_complete,
 	    .swapchainCount = 1,
 	    .pSwapchains = &cts->swapchain.handle,
 	    .pImageIndices = &index,

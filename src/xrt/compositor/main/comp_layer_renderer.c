@@ -440,10 +440,10 @@ _init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPa
 	imageCreateInfo.extent.width  = self->extent.width;
 	imageCreateInfo.extent.height = self->extent.height;
 	imageCreateInfo.usage         = usage;
-	vk->vkCreateImage(vk->device, &imageCreateInfo, NULL, &self->framebuffers[eye].image);
+	vk->vkCreateImage(vk->device, &imageCreateInfo, NULL, &self->illixr_images[eye].image);
 
 	VkMemoryRequirements memReqs = {};
-	vk->vkGetImageMemoryRequirements(vk->device, self->framebuffers[eye].image, &memReqs);
+	vk->vkGetImageMemoryRequirements(vk->device, self->illixr_images[eye].image, &memReqs);
 
 	VkExportMemoryAllocateInfo exportAllocInfo = {
 		VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO, NULL,
@@ -464,18 +464,19 @@ _init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPa
 	}
 
 	memAllocInfo.memoryTypeIndex = memoryTypeIndex;
-	vk->vkAllocateMemory(vk->device, &memAllocInfo, NULL, &self->framebuffers[eye].memory);
-	vk->vkBindImageMemory(vk->device, self->framebuffers[eye].image, self->framebuffers[eye].memory, 0);
+	vk->vkAllocateMemory(vk->device, &memAllocInfo, NULL, &self->illixr_images[eye].memory);
+	vk->vkBindImageMemory(vk->device, self->illixr_images[eye].image, self->illixr_images[eye].memory, 0);
 
 	int fd = 0;
 	VkMemoryGetFdInfoKHR memoryFdInfo = {VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR, NULL,
-		                                  self->framebuffers[eye].memory,
+		                                  self->illixr_images[eye].memory,
 		                                  VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
 	vk->vkGetMemoryFdKHR(vk->device, &memoryFdInfo, &fd);
 
-	illixr_publish_vk_image_handle(fd, format, allocationSize, self->extent.width, self->extent.height, 1, eye);
+	// Note that we add 2 to the index here (because the first 2 values are for the swapchain)
+	illixr_publish_vk_image_handle(fd, format, allocationSize, self->extent.width, self->extent.height, 1, eye + 2);
 
-	vk_create_sampler(vk, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, &self->framebuffers[eye].sampler);
+	vk_create_sampler(vk, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, &self->illixr_images[eye].sampler);
 
 	VkImageSubresourceRange subresource_range = {
 	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -485,8 +486,8 @@ _init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPa
 	    .layerCount = 1,
 	};
 
-	VkResult res = vk_create_view(vk, self->framebuffers[eye].image, VK_IMAGE_VIEW_TYPE_2D, format, subresource_range,
-	                     &self->framebuffers[eye].view);
+	VkResult res = vk_create_view(vk, self->illixr_images[eye].image, VK_IMAGE_VIEW_TYPE_2D, format, subresource_range,
+	                     &self->illixr_images[eye].view);
 
 	vk_check_error("vk_create_view", res, false);
 
@@ -644,11 +645,12 @@ _init(struct comp_layer_renderer *self,
 	                       &self->render_pass))
 		return false;
 
-	for (uint32_t i = 0; i < 2; i++)
+	for (uint32_t i = 0; i < 2; i++) {
 		if (!_init_frame_buffer(self, format, self->render_pass, i))
 			return false;
 		if (!_init_illixr_image(self, format, self->render_pass, i))
 			return false;
+	}
 
 	if (!_init_descriptor_layout(self))
 		return false;

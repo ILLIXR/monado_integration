@@ -95,7 +95,7 @@ struct comp_target
 		VkSemaphore render_complete;
 
 		//! Semaphore ILLIXR should signal when compositing is complete
-		VkSemaphore illixr_complete;
+		VkSemaphore illixr_complete[2];
 
 		//! If true, @ref render_complete is a timeline semaphore instead of a binary semaphore
 		bool render_complete_is_timeline;
