@@ -29,6 +29,7 @@
 
 #include "illixr_component.h"
 #include "common/dynamic_lib.hpp"
+#include "common/global_module_defs.hpp"
 #include "common/runtime.hpp"
 
 /*
@@ -199,8 +200,8 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 
 	// Setup info.
 	struct u_device_simple_info info;
-	info.display.w_pixels = 2048;
-	info.display.h_pixels = 1024;
+	info.display.w_pixels = ILLIXR::display_params::width_pixels;
+	info.display.h_pixels = ILLIXR::display_params::height_pixels;
 	info.display.w_meters = 0.14f;
 	info.display.h_meters = 0.07f;
 	info.lens_horizontal_separation_meters = 0.13f / 2.0f;
