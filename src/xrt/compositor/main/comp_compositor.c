@@ -340,7 +340,7 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 
 	struct comp_compositor *c = comp_compositor(xc);
 
-	COMP_SPEW(c, "LAYER_COMMIT at %8.3fms", ts_ms());
+	// COMP_SPEW(c, "LAYER_COMMIT at %8.3fms", ts_ms());
 
 	/*
 	 * We have a fast path for single projection layer that goes directly
@@ -349,14 +349,14 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 	bool fast_path = can_do_one_projection_layer_fast_path(c) && !c->mirroring_to_debug_gui && !c->peek;
 	c->base.slot.one_projection_layer_fast_path = fast_path;
 	
-	COMP_SPEW(c, "CAN DO PROJECTION at %8.3fms", ts_ms());
+	// COMP_SPEW(c, "CAN DO PROJECTION at %8.3fms", ts_ms());
 	u_graphics_sync_unref(&sync_handle);
 
-	COMP_SPEW(c, "RENDERER DRAW START at %8.3fms", ts_ms());
+	// COMP_SPEW(c, "RENDERER DRAW START at %8.3fms", ts_ms());
 	do_graphics_layers(c);
 	comp_renderer_draw(c->r);
 
-	COMP_SPEW(c, "RENDERER DRAW FINISH at %8.3fms", ts_ms());
+	// COMP_SPEW(c, "RENDERER DRAW FINISH at %8.3fms", ts_ms());
 
 	u_frame_times_widget_push_sample(&c->compositor_frame_times, os_monotonic_get_ns());
 
@@ -365,7 +365,7 @@ compositor_layer_commit(struct xrt_compositor *xc, int64_t frame_id, xrt_graphic
 	c->app_profiling.last_end = c->last_frame_time_ns;
 
 
-	COMP_SPEW(c, "LAYER_COMMIT finished drawing at %8.3fms", ns_to_ms(c->last_frame_time_ns));
+	// COMP_SPEW(c, "LAYER_COMMIT finished drawing at %8.3fms", ns_to_ms(c->last_frame_time_ns));
 
 	// Now is a good point to garbage collect.
 	// comp_swapchain_garbage_collect(&c->base.cscgc);

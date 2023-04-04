@@ -30,27 +30,28 @@ static const VkClearColorValue background_color_idle = {
 };
 
 static const VkClearColorValue background_color_idle2 = {
-    .float32 = {1.0f, 1.0f, 1.0f, 1.0f},
+    .float32 = {0.5f, 0.5f, 0.5f, 0.0f},
 };
 
 static const VkClearColorValue background_color_active = {
-    .float32 = {0.0f, 0.0f, 0.0f, 1.0f},
+    .float32 = {1.0f, 1.0f, 1.0f, 0.0f},
 };
 
 
 
 static bool
 _init_render_pass(struct vk_bundle *vk,
-                  VkFormat format,
-                  VkImageLayout final_layout,
-                  VkSampleCountFlagBits sample_count,
-                  VkRenderPass *out_render_pass)
+			      VkFormat format,
+				  VkImageLayout final_layout,
+				  VkSampleCountFlagBits sample_count,
+				  VkRenderPass *out_render_pass,
+				  VkAttachmentLoadOp load_op)
 {
 	VkAttachmentDescription *attachments = (VkAttachmentDescription[]){
 	    {
 	        .format = format,
 	        .samples = sample_count,
-	        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+	        .loadOp = load_op,
 	        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 	        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 	        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
@@ -203,7 +204,8 @@ _init_graphics_pipeline(struct comp_layer_renderer *self,
                         VkShaderModule shader_vert,
                         VkShaderModule shader_frag,
                         bool premultiplied_alpha,
-                        VkPipeline *pipeline)
+                        VkPipeline *pipeline,
+						VkRenderPass render_pass)
 {
 	struct vk_bundle *vk = self->vk;
 
@@ -310,7 +312,7 @@ _init_graphics_pipeline(struct comp_layer_renderer *self,
 	        },
 	    .stageCount = 2,
 	    .pStages = shader_stages,
-	    .renderPass = self->render_pass,
+	    .renderPass = render_pass,
 	    .pDynamicState =
 	        &(VkPipelineDynamicStateCreateInfo){
 	            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -364,10 +366,10 @@ _init_vertex_buffer(struct comp_layer_renderer *self)
 }
 
 static void
-_render_eye(struct comp_layer_renderer *self,
-            uint32_t eye,
-            VkCommandBuffer cmd_buffer,
-            VkPipelineLayout pipeline_layout)
+_render_eye_pre_lsr(struct comp_layer_renderer *self,
+					uint32_t eye,
+					VkCommandBuffer cmd_buffer,
+					VkPipelineLayout pipeline_layout)
 {
 	struct xrt_matrix_4x4 vp_world;
 	struct xrt_matrix_4x4 vp_eye;
@@ -404,11 +406,108 @@ _render_eye(struct comp_layer_renderer *self,
 			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
 			                &vp_inv, &vp_inv);
 #endif
-		} else {
+		} else if (self->layers[i] ->type != XRT_LAYER_QUAD) {
 			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
 			                &vp_world, &vp_eye);
 		}
 	}
+}
+
+static void
+_render_eye_post_lsr(struct comp_layer_renderer *self,
+					 uint32_t eye,
+					 VkCommandBuffer cmd_buffer,
+					 VkPipelineLayout pipeline_layout)
+{
+	struct xrt_matrix_4x4 vp_world;
+	struct xrt_matrix_4x4 vp_eye;
+	struct xrt_matrix_4x4 vp_inv;
+	math_matrix_4x4_multiply(&self->mat_projection[eye], &self->mat_world_view[eye], &vp_world);
+	math_matrix_4x4_multiply(&self->mat_projection[eye], &self->mat_eye_view[eye], &vp_eye);
+
+	math_matrix_4x4_inverse_view_projection(&self->mat_world_view[eye], &self->mat_projection[eye], &vp_inv);
+
+	for (uint32_t i = 0; i < self->layer_count; i++) {
+		bool unpremultiplied_alpha = self->layers[i]->flags & XRT_LAYER_COMPOSITION_UNPREMULTIPLIED_ALPHA_BIT;
+
+		struct vk_buffer *vertex_buffer = &self->vertex_buffer;
+
+		VkPipeline pipeline =
+		    unpremultiplied_alpha ? self->pipeline_premultiplied_alpha : self->pipeline_unpremultiplied_alpha;
+
+		if (self->layers[i]->type == XRT_LAYER_QUAD) {
+			pipeline = self->pipeline_quad;
+			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
+			                &vp_world, &vp_eye);
+		}
+	}
+}
+
+static bool
+_init_illixr_semaphores(struct comp_layer_renderer *self)
+{
+	struct vk_bundle *vk = self->vk;
+
+	// Create semaphore to be shared with ILLIXR
+	VkExternalSemaphoreHandleTypeFlagBits flags[] = {
+		    VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
+		    VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT};
+
+	VkPhysicalDeviceExternalSemaphoreInfo external_semaphore_info = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO};
+
+	VkExternalSemaphoreProperties external_semaphore_props = {
+		.sType = VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES};
+
+	bool                                  found = false;
+	VkExternalSemaphoreHandleTypeFlagBits compatible_semaphore_type;
+	for (size_t i = 0; i < 2; i++)
+	{
+		external_semaphore_info.handleType = flags[i];
+		vk->vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(vk->physical_device, &external_semaphore_info, &external_semaphore_props);
+		if (external_semaphore_props.compatibleHandleTypes & flags[i] && 
+			external_semaphore_props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
+		{
+			compatible_semaphore_type = flags[i];
+			found                     = true;
+			break;
+		}
+	}
+
+	assert(found && "External semaphores not supported");
+
+	VkExportSemaphoreCreateInfo export_info = {
+		.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
+		.handleTypes = compatible_semaphore_type,
+	};
+
+	VkSemaphoreCreateInfo external_semaphore_create_info = {
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		.pNext = &export_info,
+	};
+
+	for (int eye = 0; eye < 2; eye++) {
+		bool ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &self->illixr_complete[eye]);
+		if (ret != VK_SUCCESS) {
+			VK_ERROR(vk, "vkCreateSemaphore: %s", vk_result_string(ret));
+		}
+
+		VkSemaphoreGetFdInfoKHR fd_info = {
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+			.handleType = compatible_semaphore_type,
+			.semaphore = self->illixr_complete[eye],
+		};
+
+		int fd;
+		ret = vk->vkGetSemaphoreFdKHR(vk->device, &fd_info, &fd);
+		if (ret != VK_SUCCESS) {
+			VK_ERROR(vk, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
+		}
+
+		illixr_publish_vk_semaphore_handle(fd, eye);
+	}
+
+	return true;
 }
 
 static bool
@@ -490,6 +589,19 @@ _init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPa
 	                     &self->illixr_images[eye].view);
 
 	vk_check_error("vk_create_view", res, false);
+
+	VkFramebufferCreateInfo framebuffer_info = {
+	    .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+	    .renderPass = rp,
+	    .attachmentCount = 1,
+	    .pAttachments = (VkImageView[]){self->illixr_images[eye].view},
+	    .width = self->extent.width,
+	    .height = self->extent.height,
+	    .layers = 1,
+	};
+
+	res = vk->vkCreateFramebuffer(vk->device, &framebuffer_info, NULL, &self->illixr_images[eye].handle);
+	vk_check_error("vkCreateFramebuffer", res, false);
 
 	return true;
 }
@@ -642,14 +754,22 @@ _init(struct comp_layer_renderer *self,
 	}
 
 	if (!_init_render_pass(vk, format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, self->sample_count,
-	                       &self->render_pass))
+	                       &self->render_pass_pre_lsr, VK_ATTACHMENT_LOAD_OP_CLEAR))
+		return false;
+
+	if (!_init_render_pass(vk, format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, self->sample_count,
+	                       &self->render_pass_post_lsr, VK_ATTACHMENT_LOAD_OP_LOAD))
 		return false;
 
 	for (uint32_t i = 0; i < 2; i++) {
-		if (!_init_frame_buffer(self, format, self->render_pass, i))
+		if (!_init_frame_buffer(self, format, self->render_pass_pre_lsr, i))
 			return false;
-		if (!_init_illixr_image(self, format, self->render_pass, i))
+		if (!_init_illixr_image(self, format, self->render_pass_post_lsr, i))
 			return false;
+	}
+
+	if (!_init_illixr_semaphores(self)) {
+		return false;
 	}
 
 	if (!_init_descriptor_layout(self))
@@ -662,24 +782,28 @@ _init(struct comp_layer_renderer *self,
 		return false;
 
 
-	if (!_init_graphics_pipeline(self, s->layer_vert, s->layer_frag, false, &self->pipeline_premultiplied_alpha)) {
+	if (!_init_graphics_pipeline(self, s->layer_vert, s->layer_frag, false, &self->pipeline_premultiplied_alpha, self->render_pass_pre_lsr)) {
 		return false;
 	}
 
-	if (!_init_graphics_pipeline(self, s->layer_vert, s->layer_frag, true, &self->pipeline_unpremultiplied_alpha)) {
+	if (!_init_graphics_pipeline(self, s->layer_vert, s->layer_frag, true, &self->pipeline_unpremultiplied_alpha, self->render_pass_pre_lsr)) {
 		return false;
 	}
 
-	if (!_init_graphics_pipeline(self, s->equirect1_vert, s->equirect1_frag, true, &self->pipeline_equirect1)) {
+	if (!_init_graphics_pipeline(self, s->equirect1_vert, s->equirect1_frag, true, &self->pipeline_equirect1, self->render_pass_pre_lsr)) {
 		return false;
 	}
 
-	if (!_init_graphics_pipeline(self, s->equirect2_vert, s->equirect2_frag, true, &self->pipeline_equirect2)) {
+	if (!_init_graphics_pipeline(self, s->equirect2_vert, s->equirect2_frag, true, &self->pipeline_equirect2, self->render_pass_pre_lsr)) {
+		return false;
+	}
+
+	if (!_init_graphics_pipeline(self, s->layer_vert, s->layer_frag, true, &self->pipeline_quad, self->render_pass_post_lsr)) {
 		return false;
 	}
 
 #if defined(XRT_FEATURE_OPENXR_LAYER_CUBE)
-	if (!_init_graphics_pipeline(self, s->cube_vert, s->cube_frag, true, &self->pipeline_cube)) {
+	if (!_init_graphics_pipeline(self, s->cube_vert, s->cube_frag, true, &self->pipeline_cube, self->render_pass_pre_lsr)) {
 		return false;
 	}
 #endif
@@ -739,10 +863,10 @@ _render_pass_begin(struct vk_bundle *vk,
 }
 
 static void
-_render_stereo(struct comp_layer_renderer *self,
-               struct vk_bundle *vk,
-               VkCommandBuffer cmd_buffer,
-               const VkClearColorValue *color)
+_render_stereo_pre_lsr(struct comp_layer_renderer *self,
+					   struct vk_bundle *vk,
+					   VkCommandBuffer cmd_buffer,
+					   const VkClearColorValue *color)
 {
 	COMP_TRACE_MARKER();
 
@@ -757,17 +881,45 @@ _render_stereo(struct comp_layer_renderer *self,
 	vk->vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
 
 	for (uint32_t eye = 0; eye < 2; eye++) {
-		_render_pass_begin(vk, self->render_pass, self->extent, *color, self->framebuffers[eye].handle,
+		_render_pass_begin(vk, self->render_pass_pre_lsr, self->extent, *color, self->framebuffers[eye].handle,
 		                   cmd_buffer);
 
-		_render_eye(self, eye, cmd_buffer, self->pipeline_layout);
+		_render_eye_pre_lsr(self, eye, cmd_buffer, self->pipeline_layout);
+
+		vk->vkCmdEndRenderPass(cmd_buffer);
+	}
+}
+
+static void
+_render_stereo_post_lsr(struct comp_layer_renderer *self,
+					   struct vk_bundle *vk,
+					   VkCommandBuffer cmd_buffer,
+					   const VkClearColorValue *color)
+{
+	COMP_TRACE_MARKER();
+
+	VkViewport viewport = {
+	    0.0f, 0.0f, (float)self->extent.width, (float)self->extent.height, 0.0f, 1.0f,
+	};
+	vk->vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
+	VkRect2D scissor = {
+	    .offset = {0, 0},
+	    .extent = self->extent,
+	};
+	vk->vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
+
+	for (uint32_t eye = 0; eye < 2; eye++) {
+		_render_pass_begin(vk, self->render_pass_post_lsr, self->extent, *color, self->illixr_images[eye].handle,
+		                   cmd_buffer);
+
+		_render_eye_post_lsr(self, eye, cmd_buffer, self->pipeline_layout);
 
 		vk->vkCmdEndRenderPass(cmd_buffer);
 	}
 }
 
 void
-comp_layer_renderer_draw(struct comp_layer_renderer *self)
+comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self)
 {
 	COMP_TRACE_MARKER();
 
@@ -778,14 +930,100 @@ comp_layer_renderer_draw(struct comp_layer_renderer *self)
 		return;
 	os_mutex_lock(&vk->cmd_pool_mutex);
 	if (self->layer_count == 0) {
-		_render_stereo(self, vk, cmd_buffer, &background_color_idle2);
+		_render_stereo_pre_lsr(self, vk, cmd_buffer, &background_color_idle2);
 	} else {
-		_render_stereo(self, vk, cmd_buffer, &background_color_active);
+		_render_stereo_pre_lsr(self, vk, cmd_buffer, &background_color_active);
 	}
 	os_mutex_unlock(&vk->cmd_pool_mutex);
 
 	VkResult res = vk_cmd_buffer_submit(vk, cmd_buffer);
 	vk_check_error("vk_submit_cmd_buffer", res, );
+}
+
+void
+comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self)
+{
+	COMP_TRACE_MARKER();
+
+	struct vk_bundle *vk = self->vk;
+
+	VkCommandBuffer cmd_buffer;
+	if (vk_cmd_buffer_create_and_begin(vk, &cmd_buffer) != VK_SUCCESS)
+		return;
+	os_mutex_lock(&vk->cmd_pool_mutex);
+	if (self->layer_count == 0) {
+		_render_stereo_post_lsr(self, vk, cmd_buffer, &background_color_idle2);
+	} else {
+		_render_stereo_post_lsr(self, vk, cmd_buffer, &background_color_active);
+	}
+	os_mutex_unlock(&vk->cmd_pool_mutex);
+
+	VkResult ret = VK_SUCCESS;
+	VkFence fence;
+	VkFenceCreateInfo fence_info = {
+	    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+	};
+	VkSubmitInfo submitInfo = {
+	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+	    .commandBufferCount = 1,
+	    .pCommandBuffers = &cmd_buffer,
+		.waitSemaphoreCount = 2,
+		.pWaitSemaphores = self->illixr_complete,
+	};
+
+	// Finish the command buffer first.
+	os_mutex_lock(&vk->cmd_pool_mutex);
+	ret = vk->vkEndCommandBuffer(cmd_buffer);
+	os_mutex_unlock(&vk->cmd_pool_mutex);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "vkEndCommandBuffer: %s", vk_result_string(ret));
+		goto out;
+	}
+
+	// Create the fence.
+	ret = vk->vkCreateFence(vk->device, &fence_info, NULL, &fence);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "vkCreateFence: %s", vk_result_string(ret));
+		goto out;
+	}
+
+	// Do the actual submitting.
+	os_mutex_lock(&vk->queue_mutex);
+	os_mutex_lock(&vk->cmd_pool_mutex);
+	ret = vk->vkQueueSubmit(vk->queue, 1, &submitInfo, fence);
+	os_mutex_unlock(&vk->cmd_pool_mutex);
+	os_mutex_unlock(&vk->queue_mutex);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "Error: Could not submit to queue.\n");
+		goto out_fence;
+	}
+
+	// Then wait for the fence.
+	ret = vk->vkWaitForFences(vk->device, 1, &fence, VK_TRUE, 1000000000);
+	if (ret != VK_SUCCESS) {
+		VK_ERROR(vk, "vkWaitForFences: %s", vk_result_string(ret));
+		goto out_fence;
+	}
+
+	// Yes fall through.
+
+out_fence:
+	vk->vkDestroyFence(vk->device, fence, NULL);
+out:
+	os_mutex_lock(&vk->cmd_pool_mutex);
+	vk->vkFreeCommandBuffers(vk->device, vk->cmd_pool, 1, &cmd_buffer);
+	os_mutex_unlock(&vk->cmd_pool_mutex);
+}
+
+static void
+_destroy_illixr_images(struct comp_layer_renderer *self, uint32_t i)
+{
+	struct vk_bundle *vk = self->vk;
+	vk->vkDestroyImageView(vk->device, self->illixr_images[i].view, NULL);
+	vk->vkDestroyImage(vk->device, self->illixr_images[i].image, NULL);
+	vk->vkFreeMemory(vk->device, self->illixr_images[i].memory, NULL);
+	vk->vkDestroyFramebuffer(vk->device, self->illixr_images[i].handle, NULL);
+	vk->vkDestroySampler(vk->device, self->illixr_images[i].sampler, NULL);
 }
 
 static void
@@ -820,10 +1058,18 @@ comp_layer_renderer_destroy(struct comp_layer_renderer **ptr_clr)
 
 	comp_layer_renderer_destroy_layers(self);
 
-	for (uint32_t i = 0; i < 2; i++)
+	for (uint32_t i = 0; i < 2; i++) {
 		_destroy_framebuffer(self, i);
+		_destroy_illixr_images(self, i);
 
-	vk->vkDestroyRenderPass(vk->device, self->render_pass, NULL);
+		if (self->illixr_complete[i] != VK_NULL_HANDLE) {
+			vk->vkDestroySemaphore(vk->device, self->illixr_complete[i], NULL);
+			self->illixr_complete[i] = VK_NULL_HANDLE;
+		}
+	}
+
+	vk->vkDestroyRenderPass(vk->device, self->render_pass_pre_lsr, NULL);
+	vk->vkDestroyRenderPass(vk->device, self->render_pass_post_lsr, NULL);
 
 	vk->vkDestroyPipelineLayout(vk->device, self->pipeline_layout, NULL);
 	vk->vkDestroyDescriptorSetLayout(vk->device, self->descriptor_set_layout, NULL);

@@ -37,9 +37,13 @@ struct comp_layer_renderer
 		VkDeviceMemory memory;
 		VkImageView view;
 		VkSampler sampler;
+		VkFramebuffer handle;
 	} illixr_images[2];
 
-	VkRenderPass render_pass;
+	VkSemaphore illixr_complete[2];
+
+	VkRenderPass render_pass_pre_lsr;
+	VkRenderPass render_pass_post_lsr;
 
 	VkExtent2D extent;
 
@@ -51,6 +55,7 @@ struct comp_layer_renderer
 	VkPipeline pipeline_equirect1;
 	VkPipeline pipeline_equirect2;
 	VkPipeline pipeline_cube;
+	VkPipeline pipeline_quad;
 	VkDescriptorSetLayout descriptor_set_layout;
 	VkDescriptorSetLayout descriptor_set_layout_equirect;
 
@@ -97,7 +102,11 @@ comp_layer_renderer_destroy(struct comp_layer_renderer **ptr_clr);
  * @public @memberof comp_layer_renderer
  */
 void
-comp_layer_renderer_draw(struct comp_layer_renderer *self);
+comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self);
+
+
+void
+comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self);
 
 /*!
  * Update the internal members derived from the field of view.
