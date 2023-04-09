@@ -40,6 +40,7 @@ struct comp_layer_renderer
 		VkFramebuffer handle;
 	} illixr_images[2];
 
+	VkSemaphore illixr_ready[2];
 	VkSemaphore illixr_complete[2];
 
 	VkRenderPass render_pass_pre_lsr;
