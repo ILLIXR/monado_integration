@@ -20,14 +20,14 @@ option(INSTALL_ACTIVE_RUNTIME "Make Monado the default OpenXR runtime on install
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CMakeDependentOption)
 include(SPIR-V)
-
+FIND_PACKAGE(PkgConfig REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Vulkan REQUIRED)
-find_package(EGL)
+pkg_check_modules(EGL egl)
 #find_package(HIDAPI)
 find_package(OpenHMD)
 find_package(OpenCV COMPONENTS core calib3d highgui imgproc imgcodecs features2d video)
-find_package(Libusb1)
+pkg_check_modules(LIBUSB1 REQUIRED libusb-1.0)
 find_package(JPEG)
 find_package(realsense2)
 #find_package(SDL2)
@@ -47,7 +47,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_package(PkgConfig REQUIRED)
 	pkg_check_modules(XCB xcb xcb-randr)
 
-	find_package(udev REQUIRED)
+	pkg_check_modules(UDEV REQUIRED udev)
 	set(BUILD_WITH_LIBUDEV TRUE)
 	set(BUILD_DRIVER_V4L2 TRUE)
 
@@ -110,7 +110,7 @@ endif()
 
 if(BUILD_WITH_OPENCV)
 	add_definitions(-DXRT_HAVE_OPENCV)
-
+	include_directories("${OpenCV_INCLUDE_DIRS}")
 	# Tracking requires OpenCV
 	set(BUILD_TRACKING TRUE)
 endif()
