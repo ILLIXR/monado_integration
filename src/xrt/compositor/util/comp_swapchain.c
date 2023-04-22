@@ -30,7 +30,7 @@ swapchain_destroy(struct xrt_swapchain *xsc)
 {
 	struct comp_swapchain *sc = comp_swapchain(xsc);
 
-	VK_TRACE(sc->vk, "DESTROY");
+	// VK_TRACE(sc->vk, "DESTROY");
 
 	u_threading_stack_push(&sc->gc->destroy_swapchains, sc);
 }
@@ -40,7 +40,7 @@ swapchain_acquire_image(struct xrt_swapchain *xsc, uint32_t *out_index)
 {
 	struct comp_swapchain *sc = comp_swapchain(xsc);
 
-	VK_TRACE(sc->vk, "ACQUIRE_IMAGE");
+	// VK_TRACE(sc->vk, "ACQUIRE_IMAGE");
 
 	// Returns negative on empty fifo.
 	int res = u_index_fifo_pop(&sc->fifo, out_index);
@@ -55,7 +55,7 @@ swapchain_wait_image(struct xrt_swapchain *xsc, uint64_t timeout_ns, uint32_t in
 {
 	struct comp_swapchain *sc = comp_swapchain(xsc);
 
-	VK_TRACE(sc->vk, "WAIT_IMAGE");
+	// VK_TRACE(sc->vk, "WAIT_IMAGE");
 	return XRT_SUCCESS;
 }
 
@@ -64,7 +64,7 @@ swapchain_release_image(struct xrt_swapchain *xsc, uint32_t index)
 {
 	struct comp_swapchain *sc = comp_swapchain(xsc);
 
-	VK_TRACE(sc->vk, "RELEASE_IMAGE");
+	// VK_TRACE(sc->vk, "RELEASE_IMAGE");
 
 	int res = u_index_fifo_push(&sc->fifo, index);
 
@@ -364,7 +364,7 @@ comp_swapchain_teardown(struct comp_swapchain *sc)
 {
 	struct vk_bundle *vk = sc->vk;
 
-	VK_TRACE(vk, "REALLY DESTROY");
+	// VK_TRACE(vk, "REALLY DESTROY");
 
 	for (uint32_t i = 0; i < sc->base.base.image_count; i++) {
 		image_cleanup(vk, &sc->images[i]);

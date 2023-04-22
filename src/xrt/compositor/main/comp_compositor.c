@@ -144,7 +144,7 @@ compositor_predict_frame(struct xrt_compositor *xc,
 
 	struct comp_compositor *c = comp_compositor(xc);
 
-	COMP_SPEW(c, "PREDICT_FRAME");
+	// COMP_SPEW(c, "PREDICT_FRAME");
 
 	// A little bit easier to read.
 	uint64_t interval_ns = (int64_t)c->settings.nominal_frame_interval_ns;
@@ -190,7 +190,7 @@ compositor_mark_frame(struct xrt_compositor *xc,
 
 	struct comp_compositor *c = comp_compositor(xc);
 
-	COMP_SPEW(c, "MARK_FRAME %i", point);
+	// COMP_SPEW(c, "MARK_FRAME %i", point);
 
 	switch (point) {
 	case XRT_COMPOSITOR_FRAME_POINT_WOKE:
@@ -205,7 +205,7 @@ static xrt_result_t
 compositor_begin_frame(struct xrt_compositor *xc, int64_t frame_id)
 {
 	struct comp_compositor *c = comp_compositor(xc);
-	COMP_SPEW(c, "BEGIN_FRAME");
+	// COMP_SPEW(c, "BEGIN_FRAME");
 	c->app_profiling.last_begin = os_monotonic_get_ns();
 	return XRT_SUCCESS;
 }
@@ -214,7 +214,7 @@ static xrt_result_t
 compositor_discard_frame(struct xrt_compositor *xc, int64_t frame_id)
 {
 	struct comp_compositor *c = comp_compositor(xc);
-	COMP_SPEW(c, "DISCARD_FRAME at %8.3fms", ts_ms());
+	// COMP_SPEW(c, "DISCARD_FRAME at %8.3fms", ts_ms());
 	return XRT_SUCCESS;
 }
 
@@ -226,7 +226,7 @@ do_graphics_layers(struct comp_compositor *c)
 
 	comp_renderer_destroy_layers(c->r);
 
-	COMP_SPEW(c, "LAYER COUNT %d", layer_count);
+	// COMP_SPEW(c, "LAYER COUNT %d", layer_count);
 
 	comp_renderer_allocate_layers(c->r, layer_count);
 
@@ -234,7 +234,7 @@ do_graphics_layers(struct comp_compositor *c)
 		struct comp_layer *layer = &c->base.slot.layers[i];
 		struct xrt_layer_data *data = &layer->data;
 
-		COMP_SPEW(c, "LAYER_COMMIT (%d) predicted display time: %8.3fms", i, ns_to_ms(data->timestamp));
+		// COMP_SPEW(c, "LAYER_COMMIT (%d) predicted display time: %8.3fms", i, ns_to_ms(data->timestamp));
 
 		switch (data->type) {
 		case XRT_LAYER_QUAD: {

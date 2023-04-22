@@ -895,13 +895,18 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	renderer_get_view_projection(r);
 
 	// Composite non-quad layers:
+	COMP_SPEW(c, "Layer renderer START standard layers at %ld", illixr_get_now_ns());
 	comp_layer_renderer_draw_pre_lsr(r->lr);
+	COMP_SPEW(c, "Layer renderer FINISH standard layers at %ld", illixr_get_now_ns());
 
 	// Insert ILLIXR: 
+	COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld", illixr_get_now_ns());
 	illixr_write_frame(0, 0);
 
 	// Composite quad layers after LSR:
+	COMP_SPEW(c, "Layer renderer START quad layers at %ld", illixr_get_now_ns());
 	comp_layer_renderer_draw_post_lsr(r->lr);
+	COMP_SPEW(c, "Layer renderer FINISH quad layers at %ld", illixr_get_now_ns());
 
 	VkSampler src_samplers[2] = {
 		    r->lr->illixr_images[0].sampler,
