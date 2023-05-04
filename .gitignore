@@ -35,3 +35,5 @@ build*/
 patches/
 
 imgui.ini
+.idea
+cmake-*
