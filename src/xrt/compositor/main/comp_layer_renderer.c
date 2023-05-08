@@ -487,28 +487,8 @@ _init_illixr_semaphores(struct comp_layer_renderer *self)
 	};
 
 	for (int eye = 0; eye < 2; eye++) {
-		// ILLIXR ready semaphore
-		bool ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &self->illixr_ready[eye]);
-		if (ret != VK_SUCCESS) {
-			VK_ERROR(vk, "vkCreateSemaphore: %s", vk_result_string(ret));
-		}
-
-		VkSemaphoreGetFdInfoKHR ready_fd_info = {
-			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
-			.handleType = compatible_semaphore_type,
-			.semaphore = self->illixr_ready[eye],
-		};
-
-		int ready_fd;
-		ret = vk->vkGetSemaphoreFdKHR(vk->device, &ready_fd_info, &ready_fd);
-		if (ret != VK_SUCCESS) {
-			VK_ERROR(vk, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
-		}
-
-		illixr_publish_vk_semaphore_handle(ready_fd, 2 * eye);
-
 		// ILLIXR complete semaphore
-		ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &self->illixr_complete[eye]);
+		VkResult ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &self->illixr_complete[eye]);
 		if (ret != VK_SUCCESS) {
 			VK_ERROR(vk, "vkCreateSemaphore: %s", vk_result_string(ret));
 		}
@@ -525,7 +505,7 @@ _init_illixr_semaphores(struct comp_layer_renderer *self)
 			VK_ERROR(vk, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
 		}
 
-		illixr_publish_vk_semaphore_handle(complete_fd, 2 * eye + 1);
+		illixr_publish_vk_semaphore_handle(complete_fd, eye);
 	}
 
 	return true;
@@ -966,8 +946,6 @@ comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self)
 	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 	    .commandBufferCount = 1,
 	    .pCommandBuffers = &cmd_buffer,
-		// .signalSemaphoreCount = 2,
-		// .pSignalSemaphores = self->illixr_ready,
 	};
 
 	// Finish the command buffer first.
@@ -1137,8 +1115,6 @@ comp_layer_renderer_destroy(struct comp_layer_renderer **ptr_clr)
 		_destroy_illixr_images(self, i);
 
 		if (self->illixr_complete[i] != VK_NULL_HANDLE) {
-			vk->vkDestroySemaphore(vk->device, self->illixr_ready[i], NULL);
-			self->illixr_ready[i] = VK_NULL_HANDLE;
 			vk->vkDestroySemaphore(vk->device, self->illixr_complete[i], NULL);
 			self->illixr_complete[i] = VK_NULL_HANDLE;
 		}

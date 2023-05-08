@@ -124,18 +124,10 @@ extern "C" void illixr_publish_vk_semaphore_handle(int fd, int usage) {
 	semaphore_usage sem_usage;
 	switch (usage) {
 		case 0: {
-			sem_usage = semaphore_usage::LEFT_LSR_READY;
-			break;
-		}
-		case 1: {
-			sem_usage = semaphore_usage::RIGHT_LSR_READY;
-			break;
-		}
-		case 2: {
 			sem_usage = semaphore_usage::LEFT_LSR_COMPLETE;
 			break;
 		}
-		case 3: {
+		case 1: {
 			sem_usage = semaphore_usage::RIGHT_LSR_COMPLETE;
 			break;
 		}
