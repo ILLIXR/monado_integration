@@ -1019,8 +1019,8 @@ comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self)
 	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 	    .commandBufferCount = 1,
 	    .pCommandBuffers = &cmd_buffer,
-		.waitSemaphoreCount = 2,
-		.pWaitSemaphores = self->illixr_complete,
+		// .waitSemaphoreCount = 2,
+		// .pWaitSemaphores = self->illixr_complete,
 	};
 
 	// Finish the command buffer first.
