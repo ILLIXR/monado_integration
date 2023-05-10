@@ -461,7 +461,7 @@ renderer_create_layer_renderer(struct comp_renderer *r)
 	    .height = r->c->view_extents.height,
 	};
 
-	r->lr = comp_layer_renderer_create(vk, &r->c->shaders, extent, VK_FORMAT_B8G8R8A8_SRGB);
+	r->lr = comp_layer_renderer_create(vk, &r->c->shaders, extent, VK_FORMAT_R8G8B8A8_UNORM);
 	if (layer_count != 0) {
 		comp_layer_renderer_allocate_layers(r->lr, layer_count);
 	}
