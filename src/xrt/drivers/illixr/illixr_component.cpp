@@ -1,6 +1,7 @@
 extern "C" {
 //#include "ogl/ogl_api.h"
 //#include <GLFW/glfw3.h>
+#include "GL/gl.h"
 #include "xrt/xrt_device.h"
 }
 
@@ -29,8 +30,12 @@ public:
 		, sb_image_handle{sb->get_writer<image_handle>("image_handle")}
 		, sb_semaphore_handle{sb->get_writer<semaphore_handle>("semaphore_handle")}
 		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
-		, sb_vsync_estimate{sb->get_reader<switchboard::event_wrapper<time_point>>("vsync_estimate")}
-	{}
+		, sb_vsync_estimate{sb->get_writer<switchboard::event_wrapper<time_point>>("vsync_estimate")}
+		, sb_signal_quad{sb->get_reader<signal_to_quad>("signal_quad")}
+//		, ullong signal_quad{0}
+	{
+		signal_quad = 0;
+	}
 
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
@@ -38,7 +43,9 @@ public:
 	switchboard::writer<image_handle> sb_image_handle;
 	switchboard::writer<semaphore_handle> sb_semaphore_handle;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
-	switchboard::reader<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
+	switchboard::writer<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
+	switchboard::reader<signal_to_quad> sb_signal_quad;
+	ullong signal_quad;
 	fast_pose_type prev_pose; /* stores a copy of pose each time illixr_read_pose() is called */
 	time_point sample_time; /* when prev_pose was stored */
 };
@@ -161,19 +168,24 @@ extern "C" void illixr_write_frame(GLuint left,
     ));
 
     buffer_to_use = (buffer_to_use == 0U) ? 1U : 0U;
+
+	switchboard::ptr<const signal_to_quad> signal = illixr_plugin_obj->sb_signal_quad.get_ro_nullable();
+	while(signal == nullptr || signal->seq <= illixr_plugin_obj->signal_quad ) {
+		signal = illixr_plugin_obj->sb_signal_quad.get_ro_nullable();
+	}
+	illixr_plugin_obj->signal_quad = signal->seq;
 }
 
-extern "C" int64_t illixr_get_vsync_ns() {
+extern "C" void illixr_estimate_vsync_ns(int64_t estimated_vsync) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-
-    switchboard::ptr<const switchboard::event_wrapper<time_point>> vsync_estimate = illixr_plugin_obj->sb_vsync_estimate.get_ro_nullable();
-	
-	time_point target_time = vsync_estimate == nullptr ? illixr_plugin_obj->_m_clock->now() + VSYNC_PERIOD : **vsync_estimate;
-
-	return std::chrono::nanoseconds{target_time.time_since_epoch()}.count();
+	// Todo: clean this up?
+	time_point now = illixr_plugin_obj->_m_clock->now();
+	int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+	duration time_to_vsync = std::chrono::nanoseconds(estimated_vsync - now_ns);
+    illixr_plugin_obj->sb_vsync_estimate.put(illixr_plugin_obj->sb_vsync_estimate.allocate<switchboard::event_wrapper<time_point>>(now + time_to_vsync));
 }
 
 extern "C" int64_t illixr_get_now_ns() {
-	//assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
+	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 	return std::chrono::duration_cast<std::chrono::nanoseconds>((illixr_plugin_obj->_m_clock->now()).time_since_epoch()).count();
 }
