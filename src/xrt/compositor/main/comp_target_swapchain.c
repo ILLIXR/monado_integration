@@ -279,6 +279,7 @@ find_surface_format(struct comp_target_swapchain *cts, VkSurfaceKHR surface, VkS
 		for (uint32_t i = 0; i < format_for_colorspace_count; i++) {
 			for (uint32_t j = 0; j < pref_format_count; j++) {
 				if (formats_for_colorspace[i].format == preferred_color_formats[j]) {
+					formats_for_colorspace[i].format = VK_FORMAT_A8B8G8R8_SRGB_PACK32;  // Color fix for Illixr demo
 					*format = formats_for_colorspace[i];
 					goto cleanup;
 				}
