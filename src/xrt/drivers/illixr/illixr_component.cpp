@@ -2,12 +2,12 @@ extern "C" {
 #include "xrt/xrt_device.h"
 }
 
-#include "common/data_format.hpp"
-#include "common/phonebook.hpp"
-#include "common/plugin.hpp"
-#include "common/pose_prediction.hpp"
-#include "common/relative_clock.hpp"
-#include "common/switchboard.hpp"
+#include "illixr/data_format.hpp"
+#include "illixr/phonebook.hpp"
+#include "illixr/plugin.hpp"
+#include "illixr/pose_prediction.hpp"
+#include "illixr/relative_clock.hpp"
+#include "illixr/switchboard.hpp"
 
 #include <array>
 #include <iostream>
