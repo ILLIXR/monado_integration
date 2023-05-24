@@ -859,8 +859,6 @@ comp_target_swapchain_present(struct comp_target *ct,
 	    .pTimes = &times,
 	};
 
-	VkSemaphore wait_semaphores[] = {cts->base.semaphores.render_complete};
-
 	VkPresentInfoKHR presentInfo = {
 	    .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 	    .pNext = vk->has_GOOGLE_display_timing ? &timings : NULL,
@@ -937,6 +935,8 @@ comp_target_swapchain_calc_frame_pacing(struct comp_target *ct,
 	*out_desired_present_time_ns = desired_present_time_ns;
 	*out_predicted_display_time_ns = predicted_display_time_ns;
 	*out_present_slop_ns = present_slop_ns;
+
+	illixr_estimate_vsync_ns(predicted_display_time_ns);
 }
 
 static void

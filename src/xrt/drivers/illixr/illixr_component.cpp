@@ -8,6 +8,8 @@ extern "C" {
 #include <iostream>
 #include <array>
 
+#include "os/os_threading.h"
+
 #include "common/plugin.hpp"
 #include "common/phonebook.hpp"
 #include "common/switchboard.hpp"
@@ -16,8 +18,6 @@ extern "C" {
 #include "common/relative_clock.hpp"
 
 using namespace ILLIXR;
-
-static constexpr duration VSYNC_PERIOD {freq2period(60.0)};
 
 /// Dummy plugin class for an instance during phonebook registration
 class illixr_plugin : public plugin {
@@ -108,6 +108,7 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 			break;
 		}
 		default: {
+			image_usage = swapchain_usage::NA;
 			assert(false && "Invalid swapchain usage!");
 		}
 	}
@@ -121,32 +122,6 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 			height,
 			num_images,
 			image_usage
-		}
-	));
-}
-
-extern "C" void illixr_publish_vk_semaphore_handle(int fd, int usage) {
-	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-	
-	semaphore_usage sem_usage;
-	switch (usage) {
-		case 0: {
-			sem_usage = semaphore_usage::LEFT_LSR_COMPLETE;
-			break;
-		}
-		case 1: {
-			sem_usage = semaphore_usage::RIGHT_LSR_COMPLETE;
-			break;
-		}
-		default: {
-			assert(false && "Invalid swapchain usage!");
-		}
-	}
-
-	illixr_plugin_obj->sb_semaphore_handle.put(illixr_plugin_obj->sb_semaphore_handle.allocate<semaphore_handle>(
-		semaphore_handle {
-			fd,
-			sem_usage
 		}
 	));
 }
@@ -176,13 +151,12 @@ extern "C" void illixr_write_frame(GLuint left,
 	illixr_plugin_obj->signal_quad = signal->seq;
 }
 
-extern "C" void illixr_estimate_vsync_ns(int64_t estimated_vsync) {
+extern "C" void illixr_estimate_vsync_ns(uint64_t estimated_vsync) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-	// Todo: clean this up?
-	time_point now = illixr_plugin_obj->_m_clock->now();
-	int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+
+	uint64_t now_ns = os_monotonic_get_ns();
 	duration time_to_vsync = std::chrono::nanoseconds(estimated_vsync - now_ns);
-    illixr_plugin_obj->sb_vsync_estimate.put(illixr_plugin_obj->sb_vsync_estimate.allocate<switchboard::event_wrapper<time_point>>(now + time_to_vsync));
+    illixr_plugin_obj->sb_vsync_estimate.put(illixr_plugin_obj->sb_vsync_estimate.allocate<switchboard::event_wrapper<time_point>>(illixr_plugin_obj->_m_clock->now() + time_to_vsync));
 }
 
 extern "C" int64_t illixr_get_now_ns() {
