@@ -444,74 +444,6 @@ _render_eye_post_lsr(struct comp_layer_renderer *self,
 }
 
 static bool
-_init_illixr_semaphores(struct comp_layer_renderer *self)
-{
-	struct vk_bundle *vk = self->vk;
-
-	// Create semaphore to be shared with ILLIXR
-	VkExternalSemaphoreHandleTypeFlagBits flags[] = {
-		    VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BIT,
-		    VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT};
-
-	VkPhysicalDeviceExternalSemaphoreInfo external_semaphore_info = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO};
-
-	VkExternalSemaphoreProperties external_semaphore_props = {
-		.sType = VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES};
-
-	bool                                  found = false;
-	VkExternalSemaphoreHandleTypeFlagBits compatible_semaphore_type;
-	for (size_t i = 0; i < 2; i++)
-	{
-		external_semaphore_info.handleType = flags[i];
-		vk->vkGetPhysicalDeviceExternalSemaphorePropertiesKHR(vk->physical_device, &external_semaphore_info, &external_semaphore_props);
-		if (external_semaphore_props.compatibleHandleTypes & flags[i] && 
-			external_semaphore_props.externalSemaphoreFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT)
-		{
-			compatible_semaphore_type = flags[i];
-			found                     = true;
-			break;
-		}
-	}
-
-	assert(found && "External semaphores not supported");
-
-	VkExportSemaphoreCreateInfo export_info = {
-		.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
-		.handleTypes = compatible_semaphore_type,
-	};
-
-	VkSemaphoreCreateInfo external_semaphore_create_info = {
-		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		.pNext = &export_info,
-	};
-
-	for (int eye = 0; eye < 2; eye++) {
-		// ILLIXR complete semaphore
-		VkResult ret = vk->vkCreateSemaphore(vk->device, &external_semaphore_create_info, NULL, &self->illixr_complete[eye]);
-		if (ret != VK_SUCCESS) {
-			VK_ERROR(vk, "vkCreateSemaphore: %s", vk_result_string(ret));
-		}
-
-		VkSemaphoreGetFdInfoKHR complete_fd_info = {
-			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
-			.handleType = compatible_semaphore_type,
-			.semaphore = self->illixr_complete[eye],
-		};
-
-		int complete_fd;
-		ret = vk->vkGetSemaphoreFdKHR(vk->device, &complete_fd_info, &complete_fd);
-		if (ret != VK_SUCCESS) {
-			VK_ERROR(vk, "vkGetSemaphoreFdKHR: %s", vk_result_string(ret));
-		}
-
-		illixr_publish_vk_semaphore_handle(complete_fd, eye);
-	}
-
-	return true;
-}
-
-static bool
 _init_illixr_image(struct comp_layer_renderer *self, VkFormat format, VkRenderPass rp, uint32_t eye)
 {
 	struct vk_bundle *vk = self->vk;
@@ -769,10 +701,6 @@ _init(struct comp_layer_renderer *self,
 			return false;
 	}
 
-	if (!_init_illixr_semaphores(self)) {
-		return false;
-	}
-
 	if (!_init_descriptor_layout(self))
 		return false;
 	if (!_init_descriptor_layout_equirect(self))
@@ -1018,9 +946,7 @@ comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self)
 	VkSubmitInfo submitInfo = {
 	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 	    .commandBufferCount = 1,
-	    .pCommandBuffers = &cmd_buffer,
-		// .waitSemaphoreCount = 2,
-		// .pWaitSemaphores = self->illixr_complete,
+	    .pCommandBuffers = &cmd_buffer
 	};
 
 	// Finish the command buffer first.
@@ -1113,11 +1039,6 @@ comp_layer_renderer_destroy(struct comp_layer_renderer **ptr_clr)
 	for (uint32_t i = 0; i < 2; i++) {
 		_destroy_framebuffer(self, i);
 		_destroy_illixr_images(self, i);
-
-		if (self->illixr_complete[i] != VK_NULL_HANDLE) {
-			vk->vkDestroySemaphore(vk->device, self->illixr_complete[i], NULL);
-			self->illixr_complete[i] = VK_NULL_HANDLE;
-		}
 	}
 
 	vk->vkDestroyRenderPass(vk->device, self->render_pass_pre_lsr, NULL);
