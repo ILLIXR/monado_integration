@@ -708,7 +708,7 @@ renderer_get_view_projection(struct comp_renderer *r)
 	    0.0f,
 	};
 
-	xrt_device_get_view_poses(                           //
+	xrt_device_get_view_poses_monadoInternal(                           //
 	    r->c->xdev,                                      //
 	    &default_eye_relation,                           //
 	    r->c->frame.rendering.predicted_display_time_ns, //
@@ -891,22 +891,22 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	struct render_gfx_target_resources *rtr = &r->rtr_array[r->acquired_buffer];
 	// We mark here to include the layer rendering in the GPU time.
 	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
-
-	renderer_get_view_projection(r);
+	COMP_SPEW(c, "Monado needs pose now ");
+	renderer_get_view_projection(r);			// xrgears doesn't work properly without this
 
 	// Composite non-quad layers:
-	COMP_SPEW(c, "Layer renderer START standard layers at %ld", illixr_get_now_ns());
+	COMP_SPEW(c, "Layer renderer START standard layers at %ld ms", illixr_get_now_ns()/1000000);
 	comp_layer_renderer_draw_pre_lsr(r->lr);
-	COMP_SPEW(c, "Layer renderer FINISH standard layers at %ld", illixr_get_now_ns());
+	COMP_SPEW(c, "Layer renderer FINISH standard layers at %ld ms", illixr_get_now_ns()/1000000);
 
 	// Insert ILLIXR: 
-	COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld", illixr_get_now_ns());
+	COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld ms", illixr_get_now_ns()/1000000);
 	illixr_write_frame(0, 0);
 
 	// Composite quad layers after LSR:
-	COMP_SPEW(c, "Layer renderer START quad layers at %ld", illixr_get_now_ns());
+	COMP_SPEW(c, "Layer renderer START quad layers at %ld ms %ld ns", illixr_get_now_ns()/1000000, os_monotonic_get_ns());
 	comp_layer_renderer_draw_post_lsr(r->lr);
-	COMP_SPEW(c, "Layer renderer FINISH quad layers at %ld", illixr_get_now_ns());
+	COMP_SPEW(c, "Layer renderer FINISH quad layers at %ld ms %ld ns\n\n", illixr_get_now_ns()/1000000, os_monotonic_get_ns());
 
 	VkSampler src_samplers[2] = {
 		    r->lr->illixr_images[0].sampler,

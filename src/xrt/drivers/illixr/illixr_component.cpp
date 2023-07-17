@@ -59,7 +59,7 @@ extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
 	return illixr_plugin_obj;
 }
 
-extern "C" struct xrt_pose illixr_read_pose() {
+extern "C" struct xrt_pose illixr_read_pose(bool monado_Call) {
 	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 
 	if (!illixr_plugin_obj->sb_pose->fast_pose_reliable()) {
@@ -81,7 +81,9 @@ extern "C" struct xrt_pose illixr_read_pose() {
 	ret.position.z = pose.position.z();
 
 	// store pose in static variable for use in write_frame
-	illixr_plugin_obj->prev_pose = fast_pose; // copy member variables
+	if (!monado_Call){
+		illixr_plugin_obj->prev_pose = fast_pose; // copy member variables
+	}
 
 	return ret;
 }
