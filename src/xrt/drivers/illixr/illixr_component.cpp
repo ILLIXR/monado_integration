@@ -28,7 +28,6 @@ public:
 		, sb_pose{pb->lookup_impl<pose_prediction>()}
 		, _m_clock{pb->lookup_impl<RelativeClock>()}
 		, sb_image_handle{sb->get_writer<image_handle>("image_handle")}
-		, sb_semaphore_handle{sb->get_writer<semaphore_handle>("semaphore_handle")}
 		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
 		, sb_vsync_estimate{sb->get_writer<switchboard::event_wrapper<time_point>>("vsync_estimate")}
 		, sb_signal_quad{sb->get_reader<signal_to_quad>("signal_quad")}
@@ -41,7 +40,6 @@ public:
 	const std::shared_ptr<pose_prediction> sb_pose;
 	std::shared_ptr<RelativeClock> _m_clock;
 	switchboard::writer<image_handle> sb_image_handle;
-	switchboard::writer<semaphore_handle> sb_semaphore_handle;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
 	switchboard::writer<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
 	switchboard::reader<signal_to_quad> sb_signal_quad;
