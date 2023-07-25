@@ -294,11 +294,6 @@ struct xrt_device
 	                         uint64_t at_timestamp_ns,
 	                         struct xrt_space_relation *out_relation);
 	
-	void (*get_tracked_pose_monadoInternal)(struct xrt_device *xdev,
-	                         enum xrt_input_name name,
-	                         uint64_t at_timestamp_ns,
-	                         struct xrt_space_relation *out_relation);
-
 	/*!
 	 * @brief Get relationship of hand joints to the tracking origin space as
 	 * the base space.
@@ -382,13 +377,6 @@ struct xrt_device
 	                       struct xrt_space_relation *out_head_relation,
 	                       struct xrt_fov *out_fovs,
 	                       struct xrt_pose *out_poses);
-	void (*get_view_poses_monadoInternal)(struct xrt_device *xdev,
-	                       const struct xrt_vec3 *default_eye_relation,
-	                       uint64_t at_timestamp_ns,
-	                       uint32_t view_count,
-	                       struct xrt_space_relation *out_head_relation,
-	                       struct xrt_fov *out_fovs,
-	                       struct xrt_pose *out_poses);
 	/**
 	 * Compute the distortion at a single point.
 	 *
@@ -441,16 +429,6 @@ xrt_device_get_tracked_pose(struct xrt_device *xdev,
 	xdev->get_tracked_pose(xdev, name, at_timestamp_ns, out_relation);
 }
 
-// Monado internal version of get_tracked_pose and all the helper functions
-static inline void
-xrt_device_get_tracked_pose_monadoInternal(struct xrt_device *xdev,
-                            enum xrt_input_name name,
-                            uint64_t at_timestamp_ns,
-                            struct xrt_space_relation *out_relation)
-{
-	xdev->get_tracked_pose_monadoInternal(xdev, name, at_timestamp_ns, out_relation);
-}
-
 /*!
  * Helper function for @ref xrt_device::get_hand_tracking.
  *
@@ -500,18 +478,6 @@ xrt_device_get_view_poses(struct xrt_device *xdev,
 	                     out_poses);
 }
 
-static inline void
-xrt_device_get_view_poses_monadoInternal(struct xrt_device *xdev,
-                          const struct xrt_vec3 *default_eye_relation,
-                          uint64_t at_timestamp_ns,
-                          uint32_t view_count,
-                          struct xrt_space_relation *out_head_relation,
-                          struct xrt_fov *out_fovs,
-                          struct xrt_pose *out_poses)
-{
-	xdev->get_view_poses_monadoInternal(xdev, default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
-	                     out_poses);
-}
 
 /*!
  * Helper function for @ref xrt_device::compute_distortion.

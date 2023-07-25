@@ -124,24 +124,7 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 		DH_ERROR(illixr_hmd(xdev), "unknown input name");
 		return;
 	}
-	out_relation->pose = illixr_read_pose(false);
-	out_relation->relation_flags = (enum xrt_space_relation_flags)(
-	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
-	    XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
-}
-
-static void
-illixr_hmd_get_tracked_pose_monadoInternal(struct xrt_device *xdev,
-                            enum xrt_input_name name,
-                            uint64_t at_timestamp_ns,
-                            struct xrt_space_relation *out_relation)
-{
-	if (name != XRT_INPUT_GENERIC_HEAD_POSE) {
-		DH_ERROR(illixr_hmd(xdev), "unknown input name");
-		return;
-	}
-	printf("[MONADO INTERNAL POSE REQUEST] illixr_hmd_get_tracked_pose at time = %lu   %lu\n\n", at_timestamp_ns, illixr_get_now_ns()/1000000);
-	out_relation->pose = illixr_read_pose(true);
+	out_relation->pose = illixr_read_pose();
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
 	    XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT);
@@ -160,18 +143,6 @@ illixr_hmd_get_view_poses(struct xrt_device *xdev,
 	                        out_poses);
 }
 
-static void
-illixr_hmd_get_view_poses_monadoInternal(struct xrt_device *xdev,
-                          const struct xrt_vec3 *default_eye_relation,
-                          uint64_t at_timestamp_ns,
-                          uint32_t view_count,
-                          struct xrt_space_relation *out_head_relation,
-                          struct xrt_fov *out_fovs,
-                          struct xrt_pose *out_poses)
-{
-	u_device_get_view_poses_monadoInternal(xdev, default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
-	                        out_poses);
-}
 
 std::vector<std::string>
 split(const std::string &s, char delimiter)
@@ -205,9 +176,7 @@ illixr_hmd_create(const char *path_in, const char *comp_in)
 	dh = U_DEVICE_ALLOCATE(struct illixr_hmd, flags, 1, 0);
 	dh->base.update_inputs = illixr_hmd_update_inputs;
 	dh->base.get_tracked_pose = illixr_hmd_get_tracked_pose;
-	dh->base.get_tracked_pose_monadoInternal = illixr_hmd_get_tracked_pose_monadoInternal;
 	dh->base.get_view_poses = illixr_hmd_get_view_poses;
-	dh->base.get_view_poses_monadoInternal = illixr_hmd_get_view_poses_monadoInternal;
 	dh->base.destroy = illixr_hmd_destroy;
 	dh->base.name = XRT_DEVICE_GENERIC_HMD;
 	dh->base.device_type = XRT_DEVICE_TYPE_HMD;

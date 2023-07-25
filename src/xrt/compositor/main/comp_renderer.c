@@ -708,7 +708,7 @@ renderer_get_view_projection(struct comp_renderer *r)
 	    0.0f,
 	};
 
-	xrt_device_get_view_poses_monadoInternal(                           //
+	xrt_device_get_view_poses(                           //
 	    r->c->xdev,                                      //
 	    &default_eye_relation,                           //
 	    r->c->frame.rendering.predicted_display_time_ns, //
@@ -899,9 +899,24 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	comp_layer_renderer_draw_pre_lsr(r->lr);
 	COMP_SPEW(c, "Layer renderer FINISH standard layers at %ld ms", illixr_get_now_ns()/1000000);
 
-	// Insert ILLIXR: 
+	// Insert ILLIXR: calling timewarp here. But before that we need the render pose
+	struct xrt_pose render_pose;
+	for (uint32_t i = 0; i < r->lr->layer_count; i++){
+		struct comp_render_layer *layer = r->lr->layers[i];
+		if(layer->type == XRT_LAYER_STEREO_PROJECTION){
+			render_pose.orientation.x = -(layer->l_pose.orientation.x);
+			render_pose.orientation.y = -(layer->l_pose.orientation.y);
+			render_pose.orientation.z = -(layer->l_pose.orientation.z);
+			render_pose.orientation.w = -(layer->l_pose.orientation.w);
+			render_pose.position.x = (layer->l_pose.position.x + layer->r_pose.position.x)/2;
+			render_pose.position.y = (layer->l_pose.position.y + layer->r_pose.position.y)/2;
+			render_pose.position.z = (layer->l_pose.position.z + layer->r_pose.position.z)/2;
+			break;
+		}
+	}
+
 	COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld ms", illixr_get_now_ns()/1000000);
-	illixr_write_frame(0, 0);
+	illixr_write_frame(0, 0, render_pose);
 
 	// Composite quad layers after LSR:
 	COMP_SPEW(c, "Layer renderer START quad layers at %ld ms %ld ns", illixr_get_now_ns()/1000000, os_monotonic_get_ns());
@@ -1580,6 +1595,8 @@ comp_renderer_set_projection_layer(struct comp_renderer *r,
 	l->transformation[0].extent = data->stereo.l.sub.rect.extent;
 	l->transformation[1].offset = data->stereo.r.sub.rect.offset;
 	l->transformation[1].extent = data->stereo.r.sub.rect.extent;
+	l->l_pose = data->stereo.l.pose;
+	l->r_pose = data->stereo.r.pose;
 }
 
 #ifdef XRT_FEATURE_OPENXR_LAYER_EQUIRECT1

@@ -57,7 +57,7 @@ extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
 	return illixr_plugin_obj;
 }
 
-extern "C" struct xrt_pose illixr_read_pose(bool monado_Call) {
+extern "C" struct xrt_pose illixr_read_pose() {
 	assert(illixr_plugin_obj && "illixr_plugin_obj must be initialized first.");
 
 	if (!illixr_plugin_obj->sb_pose->fast_pose_reliable()) {
@@ -79,9 +79,7 @@ extern "C" struct xrt_pose illixr_read_pose(bool monado_Call) {
 	ret.position.z = pose.position.z();
 
 	// store pose in static variable for use in write_frame
-	if (!monado_Call){
-		illixr_plugin_obj->prev_pose = fast_pose; // copy member variables
-	}
+	// illixr_plugin_obj->prev_pose = fast_pose; // copy member variables
 
 	return ret;
 }
@@ -127,10 +125,20 @@ extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t si
 }
 
 extern "C" void illixr_write_frame(GLuint left,
-								   GLuint right) {
+								   GLuint right,
+								   struct xrt_pose render_pose) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
 
     static unsigned int buffer_to_use = 0U;
+	pose_type temp_pose;
+	temp_pose.orientation.x() = render_pose.orientation.x;
+	temp_pose.orientation.y() = render_pose.orientation.y;
+	temp_pose.orientation.z() = render_pose.orientation.z;
+	temp_pose.orientation.w() = render_pose.orientation.w;
+	temp_pose.position.x() = render_pose.position.x;
+	temp_pose.position.y() = render_pose.position.y;
+	temp_pose.position.z() = render_pose.position.z;
+	illixr_plugin_obj->prev_pose.pose = temp_pose;
 
 	illixr_plugin_obj->sb_eyebuffer.put(illixr_plugin_obj->sb_eyebuffer.allocate<rendered_frame>(
 	    rendered_frame {
