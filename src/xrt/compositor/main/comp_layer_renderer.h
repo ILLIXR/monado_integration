@@ -100,11 +100,7 @@ comp_layer_renderer_destroy(struct comp_layer_renderer **ptr_clr);
  * @public @memberof comp_layer_renderer
  */
 void
-comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self);
-
-
-void
-comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self);
+comp_layer_renderer_draw(struct comp_layer_renderer *self);
 
 /*!
  * Update the internal members derived from the field of view.

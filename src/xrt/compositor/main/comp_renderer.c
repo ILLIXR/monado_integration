@@ -895,9 +895,10 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	renderer_get_view_projection(r);			// xrgears doesn't work properly without this
 
 	// Composite non-quad layers:
-	COMP_SPEW(c, "Layer renderer START standard layers at %ld ms", illixr_get_now_ns()/1000000);
-	comp_layer_renderer_draw_pre_lsr(r->lr);
-	COMP_SPEW(c, "Layer renderer FINISH standard layers at %ld ms", illixr_get_now_ns()/1000000);
+	// COMP_SPEW(c, "Layer renderer START %ld ms", illixr_get_now_ns()/1000000);
+
+	// For now, we let the layer renderer composite all of the layers together
+	comp_layer_renderer_draw(r->lr);
 
 	// Insert ILLIXR: calling timewarp here. But before that we need the render pose
 	struct xrt_pose render_pose;
@@ -915,13 +916,10 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 		}
 	}
 
-	COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld ms", illixr_get_now_ns()/1000000);
+	// COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld ms", illixr_get_now_ns()/1000000);
 	illixr_write_frame(0, 0, render_pose);
-
-	// Composite quad layers after LSR:
-	COMP_SPEW(c, "Layer renderer START quad layers at %ld ms %ld ns", illixr_get_now_ns()/1000000, os_monotonic_get_ns());
-	comp_layer_renderer_draw_post_lsr(r->lr);
-	COMP_SPEW(c, "Layer renderer FINISH quad layers at %ld ms %ld ns\n\n", illixr_get_now_ns()/1000000, os_monotonic_get_ns());
+	
+	// COMP_SPEW(c, "Layer renderer FINISH at %ld ms", illixr_get_now_ns()/1000000);
 
 	VkSampler src_samplers[2] = {
 		    r->lr->illixr_images[0].sampler,

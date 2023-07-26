@@ -366,7 +366,7 @@ _init_vertex_buffer(struct comp_layer_renderer *self)
 }
 
 static void
-_render_eye_pre_lsr(struct comp_layer_renderer *self,
+_render_eye(struct comp_layer_renderer *self,
 					uint32_t eye,
 					VkCommandBuffer cmd_buffer,
 					VkPipelineLayout pipeline_layout)
@@ -406,37 +406,11 @@ _render_eye_pre_lsr(struct comp_layer_renderer *self,
 			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
 			                &vp_inv, &vp_inv);
 #endif
-		} else if (self->layers[i] ->type != XRT_LAYER_QUAD) {
+		} else if (self->layers[i]->type == XRT_LAYER_QUAD) {
+			pipeline = self->pipeline_quad;
 			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
 			                &vp_world, &vp_eye);
-		}
-	}
-}
-
-static void
-_render_eye_post_lsr(struct comp_layer_renderer *self,
-					 uint32_t eye,
-					 VkCommandBuffer cmd_buffer,
-					 VkPipelineLayout pipeline_layout)
-{
-	struct xrt_matrix_4x4 vp_world;
-	struct xrt_matrix_4x4 vp_eye;
-	struct xrt_matrix_4x4 vp_inv;
-	math_matrix_4x4_multiply(&self->mat_projection[eye], &self->mat_world_view[eye], &vp_world);
-	math_matrix_4x4_multiply(&self->mat_projection[eye], &self->mat_eye_view[eye], &vp_eye);
-
-	math_matrix_4x4_inverse_view_projection(&self->mat_world_view[eye], &self->mat_projection[eye], &vp_inv);
-
-	for (uint32_t i = 0; i < self->layer_count; i++) {
-		bool unpremultiplied_alpha = self->layers[i]->flags & XRT_LAYER_COMPOSITION_UNPREMULTIPLIED_ALPHA_BIT;
-
-		struct vk_buffer *vertex_buffer = &self->vertex_buffer;
-
-		VkPipeline pipeline =
-		    unpremultiplied_alpha ? self->pipeline_premultiplied_alpha : self->pipeline_unpremultiplied_alpha;
-
-		if (self->layers[i]->type == XRT_LAYER_QUAD) {
-			pipeline = self->pipeline_quad;
+		} else {
 			comp_layer_draw(self->layers[i], eye, pipeline, pipeline_layout, cmd_buffer, vertex_buffer,
 			                &vp_world, &vp_eye);
 		}
@@ -792,7 +766,7 @@ _render_pass_begin(struct vk_bundle *vk,
 }
 
 static void
-_render_stereo_pre_lsr(struct comp_layer_renderer *self,
+_render_stereo(struct comp_layer_renderer *self,
 					   struct vk_bundle *vk,
 					   VkCommandBuffer cmd_buffer,
 					   const VkClearColorValue *color)
@@ -813,42 +787,14 @@ _render_stereo_pre_lsr(struct comp_layer_renderer *self,
 		_render_pass_begin(vk, self->render_pass_pre_lsr, self->extent, *color, self->framebuffers[eye].handle,
 		                   cmd_buffer);
 
-		_render_eye_pre_lsr(self, eye, cmd_buffer, self->pipeline_layout);
-
-		vk->vkCmdEndRenderPass(cmd_buffer);
-	}
-}
-
-static void
-_render_stereo_post_lsr(struct comp_layer_renderer *self,
-					   struct vk_bundle *vk,
-					   VkCommandBuffer cmd_buffer,
-					   const VkClearColorValue *color)
-{
-	COMP_TRACE_MARKER();
-
-	VkViewport viewport = {
-	    0.0f, 0.0f, (float)self->extent.width, (float)self->extent.height, 0.0f, 1.0f,
-	};
-	vk->vkCmdSetViewport(cmd_buffer, 0, 1, &viewport);
-	VkRect2D scissor = {
-	    .offset = {0, 0},
-	    .extent = self->extent,
-	};
-	vk->vkCmdSetScissor(cmd_buffer, 0, 1, &scissor);
-
-	for (uint32_t eye = 0; eye < 2; eye++) {
-		_render_pass_begin(vk, self->render_pass_post_lsr, self->extent, *color, self->illixr_images[eye].handle,
-		                   cmd_buffer);
-
-		_render_eye_post_lsr(self, eye, cmd_buffer, self->pipeline_layout);
+		_render_eye(self, eye, cmd_buffer, self->pipeline_layout);
 
 		vk->vkCmdEndRenderPass(cmd_buffer);
 	}
 }
 
 void
-comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self)
+comp_layer_renderer_draw(struct comp_layer_renderer *self)
 {
 	COMP_TRACE_MARKER();
 
@@ -859,138 +805,14 @@ comp_layer_renderer_draw_pre_lsr(struct comp_layer_renderer *self)
 		return;
 	os_mutex_lock(&vk->cmd_pool_mutex);
 	if (self->layer_count == 0) {
-		_render_stereo_pre_lsr(self, vk, cmd_buffer, &background_color_idle2);
+		_render_stereo(self, vk, cmd_buffer, &background_color_idle2);
 	} else {
-		_render_stereo_pre_lsr(self, vk, cmd_buffer, &background_color_active);
+		_render_stereo(self, vk, cmd_buffer, &background_color_active);
 	}
 	os_mutex_unlock(&vk->cmd_pool_mutex);
 
-	VkResult ret = VK_SUCCESS;
-	VkFence fence;
-	VkFenceCreateInfo fence_info = {
-	    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-	};
-	VkSubmitInfo submitInfo = {
-	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	    .commandBufferCount = 1,
-	    .pCommandBuffers = &cmd_buffer,
-	};
-
-	// Finish the command buffer first.
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	ret = vk->vkEndCommandBuffer(cmd_buffer);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkEndCommandBuffer: %s", vk_result_string(ret));
-		goto out;
-	}
-
-	// Create the fence.
-	ret = vk->vkCreateFence(vk->device, &fence_info, NULL, &fence);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkCreateFence: %s", vk_result_string(ret));
-		goto out;
-	}
-
-	// Do the actual submitting.
-	os_mutex_lock(&vk->queue_mutex);
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	ret = vk->vkQueueSubmit(vk->queue, 1, &submitInfo, fence);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-	os_mutex_unlock(&vk->queue_mutex);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "Error: Could not submit to queue.\n");
-		goto out_fence;
-	}
-
-	// Then wait for the fence.
-	ret = vk->vkWaitForFences(vk->device, 1, &fence, VK_TRUE, 1000000000);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkWaitForFences: %s", vk_result_string(ret));
-		goto out_fence;
-	}
-
-	// Yes fall through.
-
-out_fence:
-	vk->vkDestroyFence(vk->device, fence, NULL);
-out:
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	vk->vkFreeCommandBuffers(vk->device, vk->cmd_pool, 1, &cmd_buffer);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-}
-
-void
-comp_layer_renderer_draw_post_lsr(struct comp_layer_renderer *self)
-{
-	COMP_TRACE_MARKER();
-
-	struct vk_bundle *vk = self->vk;
-
-	VkCommandBuffer cmd_buffer;
-	if (vk_cmd_buffer_create_and_begin(vk, &cmd_buffer) != VK_SUCCESS)
-		return;
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	if (self->layer_count == 0) {
-		_render_stereo_post_lsr(self, vk, cmd_buffer, &background_color_idle2);
-	} else {
-		_render_stereo_post_lsr(self, vk, cmd_buffer, &background_color_active);
-	}
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-
-	VkResult ret = VK_SUCCESS;
-	VkFence fence;
-	VkFenceCreateInfo fence_info = {
-	    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-	};
-	VkSubmitInfo submitInfo = {
-	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	    .commandBufferCount = 1,
-	    .pCommandBuffers = &cmd_buffer
-	};
-
-	// Finish the command buffer first.
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	ret = vk->vkEndCommandBuffer(cmd_buffer);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkEndCommandBuffer: %s", vk_result_string(ret));
-		goto out;
-	}
-
-	// Create the fence.
-	ret = vk->vkCreateFence(vk->device, &fence_info, NULL, &fence);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkCreateFence: %s", vk_result_string(ret));
-		goto out;
-	}
-
-	// Do the actual submitting.
-	os_mutex_lock(&vk->queue_mutex);
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	ret = vk->vkQueueSubmit(vk->queue, 1, &submitInfo, fence);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
-	os_mutex_unlock(&vk->queue_mutex);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "Error: Could not submit to queue.\n");
-		goto out_fence;
-	}
-
-	// Then wait for the fence.
-	ret = vk->vkWaitForFences(vk->device, 1, &fence, VK_TRUE, 1000000000);
-	if (ret != VK_SUCCESS) {
-		VK_ERROR(vk, "vkWaitForFences: %s", vk_result_string(ret));
-		goto out_fence;
-	}
-
-	// Yes fall through.
-
-out_fence:
-	vk->vkDestroyFence(vk->device, fence, NULL);
-out:
-	os_mutex_lock(&vk->cmd_pool_mutex);
-	vk->vkFreeCommandBuffers(vk->device, vk->cmd_pool, 1, &cmd_buffer);
-	os_mutex_unlock(&vk->cmd_pool_mutex);
+	VkResult res = vk_cmd_buffer_submit(vk, cmd_buffer);
+	vk_check_error("vk_submit_cmd_buffer", res, );
 }
 
 static void
