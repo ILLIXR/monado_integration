@@ -124,7 +124,6 @@ illixr_hmd_get_tracked_pose(struct xrt_device *xdev,
 		DH_ERROR(illixr_hmd(xdev), "unknown input name");
 		return;
 	}
-
 	out_relation->pose = illixr_read_pose();
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
 	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT |
@@ -143,6 +142,7 @@ illixr_hmd_get_view_poses(struct xrt_device *xdev,
 	u_device_get_view_poses(xdev, default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
 	                        out_poses);
 }
+
 
 std::vector<std::string>
 split(const std::string &s, char delimiter)

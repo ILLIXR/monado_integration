@@ -293,7 +293,7 @@ struct xrt_device
 	                         enum xrt_input_name name,
 	                         uint64_t at_timestamp_ns,
 	                         struct xrt_space_relation *out_relation);
-
+	
 	/*!
 	 * @brief Get relationship of hand joints to the tracking origin space as
 	 * the base space.
@@ -477,6 +477,7 @@ xrt_device_get_view_poses(struct xrt_device *xdev,
 	xdev->get_view_poses(xdev, default_eye_relation, at_timestamp_ns, view_count, out_head_relation, out_fovs,
 	                     out_poses);
 }
+
 
 /*!
  * Helper function for @ref xrt_device::compute_distortion.

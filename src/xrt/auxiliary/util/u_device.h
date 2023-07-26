@@ -166,8 +166,6 @@ u_device_get_view_poses(struct xrt_device *xdev,
                         struct xrt_space_relation *out_head_relation,
                         struct xrt_fov *out_fovs,
                         struct xrt_pose *out_poses);
-
-
 #ifdef __cplusplus
 }
 #endif
