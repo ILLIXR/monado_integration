@@ -24,7 +24,7 @@ set(SOURCE_FILES
 	../../../external/imgui/imgui_impl_sdl.h
 	)
 
-add_executable(gui
+add_executable(gui_gl
 	${SOURCE_FILES}
 	$<TARGET_OBJECTS:aux_os>
 	$<TARGET_OBJECTS:aux_ogl>
@@ -35,12 +35,12 @@ add_executable(gui
 	$<TARGET_OBJECTS:target_lists>
 	)
 
-set_target_properties(gui PROPERTIES
-	OUTPUT_NAME monado-gui
+set_target_properties(gui_gl PROPERTIES
+	OUTPUT_NAME monado_gl-gui
 	PREFIX ""
 	)
 
-target_link_libraries(gui PRIVATE
+target_link_libraries(gui_gl PRIVATE
 	${LIBUSB_LIBRARIES}
 	${LIBUVC_LIBRARIES}
 	${UDEV_LIBRARIES}
@@ -50,13 +50,13 @@ target_link_libraries(gui PRIVATE
 	)
 
 if(DRIVER_OBJECTS)
-	target_sources(gui PRIVATE ${DRIVER_OBJECTS})
+	target_sources(gui_gl PRIVATE ${DRIVER_OBJECTS})
 endif()
 
 if(BUILD_WITH_JPEG)
-	target_link_libraries(gui PRIVATE ${JPEG_LIBRARIES})
+	target_link_libraries(gui_gl PRIVATE ${JPEG_LIBRARIES})
 endif()
 
 if(DRIVER_LIBRARIES)
-	target_link_libraries(gui PRIVATE ${DRIVER_LIBRARIES})
+	target_link_libraries(gui_gl PRIVATE ${DRIVER_LIBRARIES})
 endif()
