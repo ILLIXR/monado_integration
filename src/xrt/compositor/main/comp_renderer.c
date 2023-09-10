@@ -891,7 +891,7 @@ dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
 	struct render_gfx_target_resources *rtr = &r->rtr_array[r->acquired_buffer];
 	// We mark here to include the layer rendering in the GPU time.
 	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
-	COMP_SPEW(c, "Monado needs pose now ");
+	// COMP_SPEW(c, "Monado needs pose now ");
 	renderer_get_view_projection(r);			// xrgears doesn't work properly without this
 
 	// Composite non-quad layers:
