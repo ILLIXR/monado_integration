@@ -1,4 +1,4 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2020, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -37,7 +37,16 @@ struct u_hashset_item
 {
 	size_t hash;
 	size_t length;
+
+#ifdef __cplusplus
+	inline const char *
+	c_str()
+	{
+		return (const char *)&this[1];
+	}
+#else
 	const char c_str[];
+#endif
 };
 
 typedef void (*u_hashset_callback)(struct u_hashset_item *item, void *priv);
@@ -49,15 +58,16 @@ int
 u_hashset_destroy(struct u_hashset **hs);
 
 int
-u_hashset_find_str(struct u_hashset *hs,
-                   const char *str,
-                   size_t length,
-                   struct u_hashset_item **out_item);
+u_hashset_find_str(struct u_hashset *hs, const char *str, size_t length, struct u_hashset_item **out_item);
 
 int
-u_hashset_find_c_str(struct u_hashset *hs,
-                     const char *c_str,
-                     struct u_hashset_item **out_item);
+u_hashset_find_c_str(struct u_hashset *hs, const char *c_str, struct u_hashset_item **out_item);
+
+int
+u_hashset_create_and_insert_str(struct u_hashset *hs, const char *str, size_t length, struct u_hashset_item **out_item);
+
+int
+u_hashset_create_and_insert_str_c(struct u_hashset *hs, const char *c_str, struct u_hashset_item **out_item);
 
 int
 u_hashset_insert_item(struct u_hashset *hs, struct u_hashset_item *item);
@@ -78,9 +88,7 @@ u_hashset_erase_c_str(struct u_hashset *hs, const char *c_str);
  * @ingroup aux_util
  */
 void
-u_hashset_clear_and_call_for_each(struct u_hashset *hs,
-                                  u_hashset_callback cb,
-                                  void *priv);
+u_hashset_clear_and_call_for_each(struct u_hashset *hs, u_hashset_callback cb, void *priv);
 
 
 #ifdef __cplusplus

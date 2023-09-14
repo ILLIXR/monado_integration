@@ -1,52 +1,35 @@
-# Copyright 2019, Collabora, Ltd.
+# Copyright 2019-2021, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
 ######
 # Create a cli interface for Monado.
 
-include_directories(
-	${CMAKE_CURRENT_SOURCE_DIR}/../../targets/common
-	${CMAKE_CURRENT_SOURCE_DIR}/../../auxiliary
-	${CMAKE_CURRENT_SOURCE_DIR}/../../include
-	${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
-	)
-
-set(SOURCE_FILES
-	cli_cmd_calibrate.c
+add_executable(
+	cli
+	cli_cmd_lighthouse.c
 	cli_cmd_probe.c
+	cli_cmd_slambatch.c
 	cli_cmd_test.c
 	cli_common.h
 	cli_main.c
-	cli_prober.c
 	)
+add_sanitizers(cli)
 
-add_executable(cli
-	${SOURCE_FILES}
-	$<TARGET_OBJECTS:aux_os>
-	$<TARGET_OBJECTS:aux_util>
-	$<TARGET_OBJECTS:aux_math>
-	$<TARGET_OBJECTS:st_prober>
-	$<TARGET_OBJECTS:target_lists>
-	)
-
-set_target_properties(cli PROPERTIES
-	OUTPUT_NAME monado-cli
-	PREFIX ""
-	)
-
-target_link_libraries(cli PRIVATE
-	${LIBUSB_LIBRARIES}
-	${LIBUVC_LIBRARIES}
-	${UDEV_LIBRARIES}
-	Threads::Threads
-	${CMAKE_DL_LIBS}
-	"glfw"
-	)
-
-if(DRIVER_OBJECTS)
-	target_sources(cli PRIVATE ${DRIVER_OBJECTS})
+if(NOT WIN32)
+	# No getline on Windows, so until we have a portable impl
+	target_sources(cli PRIVATE cli_cmd_calibrate.c)
 endif()
 
-if(DRIVER_LIBRARIES)
-	target_link_libraries(cli PRIVATE ${DRIVER_LIBRARIES})
-endif()
+set_target_properties(cli PROPERTIES OUTPUT_NAME monado-cli PREFIX "")
+
+target_link_libraries(
+	cli
+	PRIVATE
+		aux_os
+		aux_util
+		aux_math
+		target_instance_no_comp
+		drv_includes
+	)
+
+install(TARGETS cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

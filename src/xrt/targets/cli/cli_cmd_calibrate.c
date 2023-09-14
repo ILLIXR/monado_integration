@@ -9,7 +9,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 
+#include "xrt/xrt_instance.h"
 #include "xrt/xrt_prober.h"
 #include "util/u_misc.h"
 #include "cli_common.h"
@@ -17,6 +19,7 @@
 
 struct program
 {
+	struct xrt_instance *xi;
 	struct xrt_prober *xp;
 
 	int index;
@@ -26,20 +29,34 @@ struct program
 static int
 init(struct program *p)
 {
+	xrt_result_t xret;
 	int ret;
 
-	// Fist initialize the prober.
-	ret = xrt_prober_create(&p->xp);
+	// Fist initialize the instance.
+	ret = xrt_instance_create(NULL, &p->xi);
 	if (ret != 0) {
-		fprintf(stderr, "Failed to create prober\n");
+		fprintf(stderr, "Failed to create instance\n");
 		return ret;
 	}
 
+	// Get the prober pointer.
+	// In general, null probers are OK, but this module directly uses the
+	// prober.
+	xret = xrt_instance_get_prober(p->xi, &p->xp);
+	if (xret != XRT_SUCCESS) {
+		fprintf(stderr, "Failed to get prober from instance.\n");
+		return -1;
+	}
+	if (p->xp == NULL) {
+		fprintf(stderr, "Null prober returned - cannot proceed.\n");
+		return -1;
+	}
+
 	// Need to prime the prober before listing devices.
-	ret = xrt_prober_probe(p->xp);
-	if (ret != 0) {
+	xret = xrt_prober_probe(p->xp);
+	if (xret != XRT_SUCCESS) {
 		fprintf(stderr, "Failed to probe for devices.\n");
-		return ret;
+		return -1;
 	}
 
 	return 0;
@@ -48,16 +65,18 @@ init(struct program *p)
 static void
 list_cb(struct xrt_prober *xp,
         struct xrt_prober_device *pdev,
-        const char *name,
+        const char *product,
+        const char *manufacturer,
+        const char *serial,
         void *ptr)
 {
 	struct program *p = (struct program *)ptr;
 	if (p->selected <= 0) {
-		printf(" %i) %s\n", ++p->index, name);
+		printf(" %i) %s\n", ++p->index, product);
 	} else if (p->selected == ++p->index) {
 		// Do stuff
-		printf(" :: Doing calibrartion\n");
-		printf(" Pretending to calibrarating camera '%s'\n", name);
+		printf(" :: Doing calibration\n");
+		printf(" Pretending to calibrate camera '%s'\n", product);
 	}
 }
 
@@ -111,9 +130,8 @@ print_cameras(struct program *p)
 static int
 do_exit(struct program *p, int ret)
 {
-	if (p->xp != NULL) {
-		xrt_prober_destroy(&p->xp);
-	}
+	p->xp = NULL;
+	xrt_instance_destroy(&p->xi);
 
 	printf(" :: Exiting '%i'\n", ret);
 

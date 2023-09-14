@@ -12,6 +12,7 @@
 
 #include <asm/byteorder.h>
 #include <stdint.h>
+#include "os/os_hid.h"
 
 #define VIVE_CONTROLLER_BUTTON_REPORT_ID 0x01
 
@@ -44,6 +45,26 @@ struct vive_controller_button_report
 	uint8_t unknown5[8];
 	uint8_t maybe_bitfield;
 	uint8_t unknown6;
+} __attribute__((packed));
+
+struct vive_controller_touch_sample
+{
+	uint16_t touch[2];
+} __attribute__((packed));
+
+struct vive_controller_trigger_sample
+{
+	uint8_t trigger;
+} __attribute__((packed));
+
+struct vive_controller_button_sample
+{
+	uint8_t buttons;
+} __attribute__((packed));
+
+struct vive_controller_battery_sample
+{
+	uint8_t battery;
 } __attribute__((packed));
 
 #define VIVE_IMU_RANGE_MODES_REPORT_ID 0x01
@@ -157,6 +178,38 @@ struct vive_imu_report
 	struct vive_imu_sample sample[3];
 } __attribute__((packed));
 
+struct watchman_imu_sample
+{
+	/* ouvrt: "Time in 48 MHz ticks, but we are missing the low byte."
+	 *
+	 * The full timestamp is 4 bytes, formed by
+	 * first byte : vive_controller_message.timestamp_hi
+	 * second byte: vive_controller_message.timestamp_lo
+	 * third byte: watchman_imu_sample.timestamp_hi
+	 * fourth byte: remains zero */
+	uint8_t timestamp_hi;
+	uint16_t acc[3];
+	uint16_t gyro[3];
+} __attribute__((packed));
+
+
+#define TYPE_FLAG_TOUCH_FORCE 161
+struct watchman_touch_force
+{
+	uint8_t type_flag;
+
+	uint8_t touch; // bitmask of touched buttons
+
+	// "distance" from hardware
+	uint8_t middle_finger_handle;
+	uint8_t ring_finger_handle;
+	uint8_t pinky_finger_handle;
+	uint8_t index_finger_trigger;
+
+	uint8_t squeeze_force;
+	uint8_t trackpad_force;
+} __attribute__((packed));
+
 #define VIVE_CONTROLLER_LIGHTHOUSE_PULSE_REPORT_ID 0x21
 
 struct vive_controller_lighthouse_pulse
@@ -209,6 +262,30 @@ struct vive_controller_report2
 
 #define VIVE_HEADSET_LIGHTHOUSE_PULSE_REPORT_ID 0x25
 
+struct vive_headset_lighthouse_v2_pulse
+{
+	uint8_t sensor_id;
+	uint32_t timestamp;
+	uint32_t data;
+	uint32_t mask;
+} __attribute__((packed));
+
+#define VIVE_HEADSET_LIGHTHOUSE_V2_PULSE_REPORT_ID 0x27
+
+struct vive_headset_lighthouse_v2_pulse_report
+{
+	uint8_t id;
+	struct vive_headset_lighthouse_v2_pulse pulse[4];
+	/* Seen to be all values in range [0 - 53], related to triggered sensor (and
+	 * imu?). */
+	uint8_t unknown1;
+	/* Always 0 */
+	uint8_t unknown2;
+	/* Always 0xde40daa */
+	uint32_t unknown3;
+
+} __attribute__((packed));
+
 struct vive_headset_lighthouse_pulse
 {
 	uint8_t id;
@@ -233,7 +310,10 @@ struct vive_controller_haptic_pulse_report
 	uint8_t id;
 	uint8_t command;
 	uint8_t len;
-	uint8_t unknown[7];
+	uint8_t zero;
+	uint16_t pulse_high;
+	uint16_t pulse_low;
+	uint16_t repeat_count;
 } __attribute__((packed));
 
 #define VIVE_CONTROLLER_POWEROFF_COMMAND 0x9f
@@ -246,41 +326,19 @@ struct vive_controller_poweroff_report
 	uint8_t magic[4];
 } __attribute__((packed));
 
+extern const struct vive_headset_power_report power_on_report;
+extern const struct vive_headset_power_report power_off_report;
 
-const struct vive_headset_power_report power_on_report = {
-    .id = VIVE_HEADSET_POWER_REPORT_ID,
-    .type = __cpu_to_le16(VIVE_HEADSET_POWER_REPORT_TYPE),
-    .len = 56,
-    .unknown1 =
-        {
-            0x01,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x02,
-            0x00,
-            0x01,
-        },
-    .unknown2 = 0x7a,
-};
+char *
+vive_read_config(struct os_hid_device *hid_dev);
 
-const struct vive_headset_power_report power_off_report = {
-    .id = VIVE_HEADSET_POWER_REPORT_ID,
-    .type = __cpu_to_le16(VIVE_HEADSET_POWER_REPORT_TYPE),
-    .len = 56,
-    .unknown1 =
-        {
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x02,
-            0x00,
-            0x00,
-        },
-    .unknown2 = 0x7c,
-};
+int
+vive_get_imu_range_report(struct os_hid_device *hid_dev, double *gyro_range, double *acc_range);
+
+int
+vive_read_firmware(struct os_hid_device *hid_dev,
+                   uint32_t *firmware_version,
+                   uint8_t *hardware_revision,
+                   uint8_t *hardware_version_micro,
+                   uint8_t *hardware_version_minor,
+                   uint8_t *hardware_version_major);

@@ -16,37 +16,45 @@
 extern "C" {
 #endif
 
+struct client_gl_context
+{
+	Display *dpy;
+	GLXContext ctx;
+	GLXDrawable read;
+	GLXDrawable draw;
+};
 
 /*!
+ * @class client_gl_xlib_compositor
  * A client facing xlib OpenGL base compositor.
  *
  * @ingroup comp_client
+ * @extends client_gl_compositor
  */
 struct client_gl_xlib_compositor
 {
 	//! OpenGL compositor wrapper base.
 	struct client_gl_compositor base;
-};
 
-/*!
- * Convinence function to convert a xrt_compositor to a
- * client_gl_xlib_compositor.
- *
- * @ingroup comp_client
- */
-XRT_MAYBE_UNUSED static struct client_gl_xlib_compositor *
-client_gl_xlib_compositor(struct xrt_compositor *xc)
-{
-	return (struct client_gl_xlib_compositor *)xc;
-}
+	/*!
+	 * Temporary storage for "current" OpenGL context while app_context is
+	 * made current using context_begin/context_end. We only need one because
+	 * app_context can only be made current in one thread at a time too.
+	 */
+	struct client_gl_context temp_context;
+
+	//! GL context provided in graphics binding.
+	struct client_gl_context app_context;
+};
 
 /*!
  * Create a new client_gl_xlib_compositor.
  *
- * @ingroup comp_client
+ * @public @memberof client_gl_xlib_compositor
+ * @see xrt_compositor_native
  */
 struct client_gl_xlib_compositor *
-client_gl_xlib_compositor_create(struct xrt_compositor_fd *xcfd,
+client_gl_xlib_compositor_create(struct xrt_compositor_native *xcn,
                                  Display *xDisplay,
                                  uint32_t visualid,
                                  GLXFBConfig glxFBConfig,

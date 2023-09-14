@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 /*!
- * @defgroup drv_hydra Razer Hydra Driver
+ * @defgroup drv_hydra Razer Hydra driver
  * @ingroup drv
  *
  * @brief Driver for the Razer Hydra motion controllers.
@@ -29,12 +29,14 @@ extern "C" {
  * Probing function for Razer Hydra devices.
  *
  * @ingroup drv_hydra
+ * @see xrt_prober_found_func_t
  */
 int
 hydra_found(struct xrt_prober *xp,
             struct xrt_prober_device **devices,
-            size_t num_devices,
+            size_t device_count,
             size_t index,
+            cJSON *attached_data,
             struct xrt_device **out_xdevs);
 
 

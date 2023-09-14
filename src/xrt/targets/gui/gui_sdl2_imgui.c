@@ -7,6 +7,7 @@
  * @ingroup gui
  */
 
+#include "util/u_file.h"
 #include "util/u_var.h"
 #include "util/u_time.h"
 #include "util/u_misc.h"
@@ -15,6 +16,7 @@
 
 #include "ogl/ogl_api.h"
 #include "gui/gui_imgui.h"
+#include "xrt/xrt_compiler.h"
 
 #include "gui_sdl2.h"
 
@@ -32,7 +34,8 @@
  */
 struct gui_imgui
 {
-	bool show_demo_window;
+	bool show_imgui_demo;
+	bool show_implot_demo;
 	struct xrt_colour_rgb_f32 clear;
 };
 
@@ -52,12 +55,27 @@ gui_sdl2_imgui_loop(struct sdl2_program *p)
 	// Local state
 	ImGuiIO *io = igGetIO();
 
+	// Make window layout file "imgui.ini" live in config dir
+	XRT_MAYBE_UNUSED int res = u_file_get_path_in_config_dir("imgui.ini", p->layout_file, sizeof(p->layout_file));
+	assert(res > 0);
+	io->IniFilename = p->layout_file;
+
+	// Ensure imgui.ini file exists in config dir
+	FILE *imgui_ini = u_file_open_file_in_config_dir("imgui.ini", "a");
+	if (imgui_ini != NULL) {
+		fclose(imgui_ini);
+	}
+
 	// Setup Platform/Renderer bindings
 	igImGui_ImplSDL2_InitForOpenGL(p->win, p->ctx);
 	igImGui_ImplOpenGL3_Init(NULL);
 
 	// Setup Dear ImGui style
 	igStyleColorsDark(NULL);
+
+	// Setup the plot context.
+	ImPlotContext *plot_ctx = ImPlot_CreateContext();
+	ImPlot_SetCurrentContext(plot_ctx);
 
 	// Main loop
 	struct gui_imgui gui = {0};
@@ -66,7 +84,8 @@ gui_sdl2_imgui_loop(struct sdl2_program *p)
 	gui.clear.b = 0.60f;
 	u_var_add_root(&gui, "GUI Control", false);
 	u_var_add_rgb_f32(&gui, &gui.clear, "Clear Colour");
-	u_var_add_bool(&gui, &gui.show_demo_window, "Demo Window");
+	u_var_add_bool(&gui, &gui.show_imgui_demo, "Imgui Demo Window");
+	u_var_add_bool(&gui, &gui.show_implot_demo, "Implot Demo Window");
 	u_var_add_bool(&gui, &p->base.stopped, "Exit");
 
 	while (!p->base.stopped) {
@@ -79,8 +98,7 @@ gui_sdl2_imgui_loop(struct sdl2_program *p)
 				p->base.stopped = true;
 			}
 
-			if (event.type == SDL_WINDOWEVENT &&
-			    event.window.event == SDL_WINDOWEVENT_CLOSE &&
+			if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE &&
 			    event.window.windowID == SDL_GetWindowID(p->win)) {
 				p->base.stopped = true;
 			}
@@ -97,16 +115,20 @@ gui_sdl2_imgui_loop(struct sdl2_program *p)
 		gui_scene_manager_render(&p->base);
 
 		// Handle this here.
-		if (gui.show_demo_window) {
-			igShowDemoWindow(&gui.show_demo_window);
+		if (gui.show_imgui_demo) {
+			igShowDemoWindow(&gui.show_imgui_demo);
+		}
+
+		// Handle this here.
+		if (gui.show_implot_demo) {
+			ImPlot_ShowDemoWindow(&gui.show_implot_demo);
 		}
 
 		// Build the DrawData (EndFrame).
 		igRender();
 
 		// Clear the background.
-		glViewport(0, 0, (int)io->DisplaySize.x,
-		           (int)io->DisplaySize.y);
+		glViewport(0, 0, (int)io->DisplaySize.x, (int)io->DisplaySize.y);
 		glClearColor(gui.clear.r, gui.clear.g, gui.clear.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
@@ -119,6 +141,7 @@ gui_sdl2_imgui_loop(struct sdl2_program *p)
 
 	// Cleanup
 	u_var_remove_root(&gui);
+	ImPlot_DestroyContext(plot_ctx);
 	igImGui_ImplOpenGL3_Shutdown();
 	igImGui_ImplSDL2_Shutdown();
 	igDestroyContext(NULL);

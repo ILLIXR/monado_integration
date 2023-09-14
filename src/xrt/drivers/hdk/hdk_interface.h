@@ -18,10 +18,10 @@ extern "C" {
 
 
 /*!
- * @defgroup drv_hdk HDK Driver
+ * @defgroup drv_hdk HDK driver
  * @ingroup drv
  *
- * @brief Driver for the HDK HMD.
+ * @brief Driver for the OSVR HDK series of HMDs.
  */
 
 #define HDK_VID 0x1532
@@ -31,12 +31,14 @@ extern "C" {
  * Probing function for HDK devices.
  *
  * @ingroup drv_hdk
+ * @see xrt_prober_found_func_t
  */
 int
 hdk_found(struct xrt_prober *xp,
           struct xrt_prober_device **devices,
-          size_t num_devices,
+          size_t device_count,
           size_t index,
+          cJSON *attached_data,
           struct xrt_device **out_xdev);
 
 /*!

@@ -10,6 +10,9 @@
 
 #pragma once
 
+#include "os/os_threading.h"
+#include "util/u_logging.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,15 +25,24 @@ enum HDK_VARIANT
 	HDK_VARIANT_2
 };
 
+/*!
+ * @implements xrt_device
+ */
 struct hdk_device
 {
 	struct xrt_device base;
 	struct os_hid_device *dev;
 	enum HDK_VARIANT variant;
 
-	bool print_spew;
-	bool print_debug;
+	struct os_thread_helper imu_thread;
+	struct os_mutex lock;
+
+	enum u_logging_level log_level;
 	bool disconnect_notified;
+
+	struct xrt_quat quat;
+	struct xrt_quat ang_vel_quat;
+	bool quat_valid;
 };
 
 static inline struct hdk_device *
@@ -40,35 +52,20 @@ hdk_device(struct xrt_device *xdev)
 }
 
 struct hdk_device *
-hdk_device_create(struct os_hid_device *dev,
-                  enum HDK_VARIANT variant,
-                  bool print_spew,
-                  bool print_debug);
+hdk_device_create(struct os_hid_device *dev, enum HDK_VARIANT variant);
 
-#define HDK_SPEW(c, ...)                                                       \
-	do {                                                                   \
-		if (c->print_spew) {                                           \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
-#define HDK_DEBUG(c, ...)                                                      \
-	do {                                                                   \
-		if (c->print_debug) {                                          \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
 
-#define HDK_ERROR(c, ...)                                                      \
-	do {                                                                   \
-		fprintf(stderr, "%s - ", __func__);                            \
-		fprintf(stderr, __VA_ARGS__);                                  \
-		fprintf(stderr, "\n");                                         \
-	} while (false)
+/*
+ *
+ * Printing functions.
+ *
+ */
 
+#define HDK_TRACE(d, ...) U_LOG_XDEV_IFL_T(&d->base, d->log_level, __VA_ARGS__)
+#define HDK_DEBUG(d, ...) U_LOG_XDEV_IFL_D(&d->base, d->log_level, __VA_ARGS__)
+#define HDK_INFO(d, ...) U_LOG_XDEV_IFL_I(&d->base, d->log_level, __VA_ARGS__)
+#define HDK_WARN(d, ...) U_LOG_XDEV_IFL_W(&d->base, d->log_level, __VA_ARGS__)
+#define HDK_ERROR(d, ...) U_LOG_XDEV_IFL_E(&d->base, d->log_level, __VA_ARGS__)
 
 #ifdef __cplusplus
 }

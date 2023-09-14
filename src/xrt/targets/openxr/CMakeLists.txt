@@ -4,131 +4,148 @@
 ######
 # Create a loadable OpenXR driver.
 
-# set(RUNTIME_BARE_PREFIX xrt)
-# set(RUNTIME_PREFIX ${RUNTIME_BARE_PREFIX}_)
-
 set(RUNTIME_BARE_SUFFIX monado)
 set(RUNTIME_SUFFIX _${RUNTIME_BARE_SUFFIX})
 
-set(RUNTIME_TARGET ${RUNTIME_PREFIX}openxr${RUNTIME_SUFFIX} CACHE INTERNAL "" FORCE)
+set(RUNTIME_TARGET
+    ${RUNTIME_PREFIX}openxr${RUNTIME_SUFFIX}
+    CACHE INTERNAL "" FORCE
+	)
 
 # OpenXR 1.0
 set(XR_API_MAJOR "1")
 
-include_directories(
-	${CMAKE_CURRENT_SOURCE_DIR}/../../../external
-	${CMAKE_CURRENT_SOURCE_DIR}/../../targets/common
-	${CMAKE_CURRENT_SOURCE_DIR}/../../auxiliary
-	${CMAKE_CURRENT_SOURCE_DIR}/../../include
-	${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
-	${CMAKE_CURRENT_SOURCE_DIR}/../../state_trackers
-	)
+add_library(${RUNTIME_TARGET} MODULE target.c libopenxr.def)
 
-set(SOURCE_FILES
-	target.c
-	oxr_sdl2_hack.c
-	)
+# Note: Order may matter in these lists!
+target_link_libraries(${RUNTIME_TARGET} PUBLIC aux_vk aux_os aux_util aux_math)
 
-# depends on above generated files
-add_library(${RUNTIME_TARGET} SHARED
-	${MANIFEST_DEV_PATH}
-	${MANIFEST_PATH}
-	${SOURCE_FILES}
-	$<TARGET_OBJECTS:aux_os>
-	$<TARGET_OBJECTS:aux_ogl>
-	$<TARGET_OBJECTS:aux_util>
-	$<TARGET_OBJECTS:aux_math>
-	$<TARGET_OBJECTS:comp>
-	$<TARGET_OBJECTS:st_oxr>
-	$<TARGET_OBJECTS:st_gui>
-	$<TARGET_OBJECTS:st_prober>
-	$<TARGET_OBJECTS:target_lists>
-	)
-
-target_link_libraries(${RUNTIME_TARGET} PUBLIC
-	${LIBUVC_LIBRARIES}
-	${LIBUSB_LIBRARIES}
-	${Vulkan_LIBRARIES}
-	${UDEV_LIBRARIES}
-	${XCB_LIBRARIES}
-	${WAYLAND_LIBRARIES}
-	OpenGL::GLX
-	${CMAKE_DL_LIBS}
-	"glfw"
-	)
-
-if(DRIVER_OBJECTS)
-	target_sources(${RUNTIME_TARGET} PRIVATE
-		${DRIVER_OBJECTS}
+if(XRT_FEATURE_SERVICE)
+	target_link_libraries(${RUNTIME_TARGET} PUBLIC st_oxr ipc_client comp_client)
+else()
+	target_link_libraries(
+		${RUNTIME_TARGET}
+		PUBLIC
+			st_oxr
+			st_prober
+			target_lists
+			target_instance
+			comp_main
+			comp_client
 		)
 endif()
 
-if(DRIVER_LIBRARIES)
-	target_link_libraries(${RUNTIME_TARGET} PRIVATE
-		${DRIVER_LIBRARIES}
+if(NOT WIN32)
+	# Force the main "negotiate" symbol's inclusion
+	# and use a version script to ensure that's the only one we expose.
+	set_property(
+		TARGET ${RUNTIME_TARGET}
+		APPEND_STRING
+		PROPERTY
+			LINK_FLAGS
+			"-u xrNegotiateLoaderRuntimeInterface -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libopenxr.version"
+		)
+	# Re-link if the version script changes.
+	set_property(
+		TARGET ${RUNTIME_TARGET}
+		APPEND
+		PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/libopenxr.version"
 		)
 endif()
-
-if(BUILD_WITH_SDL2)
-	include_directories(${SDL2_INCLUDE_DIRS})
-
-	target_link_libraries(${RUNTIME_TARGET} PUBLIC
-		${SDL2_LIBRARIES}
-		)
-
-	target_sources(${RUNTIME_TARGET} PRIVATE
-		../../../external/imgui/cimgui_sdl.cpp
-		../../../external/imgui/imgui_impl_sdl.cpp
-		../../../external/imgui/imgui_impl_sdl.h
-		)
-endif()
-if(BUILD_WITH_XCB AND BUILD_WITH_XLIB)
-	target_link_libraries(${RUNTIME_TARGET} PUBLIC
-		${X11_X11_LIB}
-		)
-endif()
-
-include(GNUInstallDirs)
-
-# Install the runtime itself
-install(TARGETS ${RUNTIME_TARGET}
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-	)
-
-
-# $LIBPATH is a generator expression that is evaluated after configure_file, so we have to use file(GENERATE) instead
 
 ###
 # Generate runtime manifest with absolute path to runtime intended for development without installing
-set(MANIFEST_INPUT ${CMAKE_CURRENT_SOURCE_DIR}/openxr_monado.in.json)
-set(RUNTIME_PATH $<TARGET_SONAME_FILE:${RUNTIME_TARGET}>)
 
-# Need this step because file(GENERATE) only evaluates generator expressions, and not what configure_file does.
-configure_file(${MANIFEST_INPUT} ${CMAKE_CURRENT_BINARY_DIR}/intermediate_manifest.json)
-file(GENERATE
-	OUTPUT "${CMAKE_BINARY_DIR}/${RUNTIME_TARGET}-dev.json"
-	INPUT ${CMAKE_CURRENT_BINARY_DIR}/intermediate_manifest.json)
+# 3.9+ have a global property with the truth
+get_property(IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+if(IS_MULTI_CONFIG)
+	set(DEV_MANIFEST_OUTPUT "${CMAKE_BINARY_DIR}/$<CONFIG>/${RUNTIME_TARGET}-dev.json")
+else()
+	set(DEV_MANIFEST_OUTPUT "${CMAKE_BINARY_DIR}/${RUNTIME_TARGET}-dev.json")
+endif()
+
+include(GenerateOpenXRRuntimeManifest)
+generate_openxr_runtime_manifest_buildtree(
+	RUNTIME_TARGET ${RUNTIME_TARGET} #
+	OUT_FILE ${DEV_MANIFEST_OUTPUT}
+	)
 
 ###
 # Prepare the installable manifest: will be generated completely at install time,
 # by a script we generate now.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	# Windows: install manifest to top level
+	set(_extra_args)
+	if(XRT_OPENXR_INSTALL_ABSOLUTE_RUNTIME_PATH)
+		set(_extra_args ABSOLUTE_RUNTIME_PATH)
+	elseif(XRT_OPENXR_INSTALL_MANIFEST_RELATIVE_RUNTIME_PATH)
+		set(_extra_args RUNTIME_DIR_RELATIVE_TO_MANIFEST ${CMAKE_INSTALL_BINDIR})
+	endif()
+	generate_openxr_runtime_manifest_at_install(
+		${_extra_args}
+		RUNTIME_TARGET ${RUNTIME_TARGET}
+		DESTINATION .
+		RELATIVE_RUNTIME_DIR ${CMAKE_INSTALL_BINDIR}
+		)
+	install(
+		TARGETS ${RUNTIME_TARGET}
+		LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime
+		)
+	if("${CMAKE_VERSION}" VERSION_GREATER_EQUAL 3.21)
+		# This generator expression is easier to control than install(RUNTIME_DEPENDENCY_SETS),
+		# which is prone to trying to distribute system DLLs.
+		install(
+			FILES $<TARGET_RUNTIME_DLLS:${RUNTIME_TARGET}>
+			DESTINATION ${CMAKE_INSTALL_BINDIR}
+			COMPONENT Runtime
+			)
+	endif()
+elseif(NOT ANDROID)
+	# Linux, BSD, etc.
 	set(MANIFEST_RELATIVE_DIR share/openxr/${XR_API_MAJOR}/)
-	if(INSTALL_ACTIVE_RUNTIME)
-		configure_file(active_runtime.cmake ${CMAKE_CURRENT_BINARY_DIR}/active_runtime.cmake @ONLY)
+	if(XRT_OPENXR_INSTALL_ACTIVE_RUNTIME)
+		configure_file(
+			active_runtime.cmake ${CMAKE_CURRENT_BINARY_DIR}/active_runtime.cmake @ONLY
+			)
 		install(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/active_runtime.cmake)
 	endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	# TODO: install target on windows just needs to know where to install manifest
-	set(MANIFEST_RELATIVE_DIR)
+
+	set(_extra_args)
+	if(XRT_OPENXR_INSTALL_ABSOLUTE_RUNTIME_PATH)
+		set(_extra_args ABSOLUTE_RUNTIME_PATH)
+	elseif(XRT_OPENXR_INSTALL_MANIFEST_RELATIVE_RUNTIME_PATH)
+		set(_extra_args RUNTIME_DIR_RELATIVE_TO_MANIFEST ../../../${CMAKE_INSTALL_LIBDIR})
+	endif()
+	generate_openxr_runtime_manifest_at_install(
+		${_extra_args}
+		RUNTIME_TARGET ${RUNTIME_TARGET}
+		DESTINATION share/openxr/${XR_API_MAJOR}
+		RELATIVE_RUNTIME_DIR ${CMAKE_INSTALL_LIBDIR}
+		)
+	install(
+		TARGETS ${RUNTIME_TARGET} #
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime
+		RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime
+		)
 endif()
 
-# If we know where to install the manifest, we can set it up to be installed.
-if(MANIFEST_RELATIVE_DIR)
-	set(RUNTIME_RELATIVE_DIR ${CMAKE_INSTALL_LIBDIR})
-	set(RUNTIME_FILENAME ${CMAKE_SHARED_MODULE_PREFIX}${RUNTIME_TARGET}${CMAKE_SHARED_MODULE_SUFFIX})
-	configure_file(make_manifest.cmake ${CMAKE_CURRENT_BINARY_DIR}/make_manifest.cmake @ONLY)
-	install(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/make_manifest.cmake)
+###
+# Inelegant but effective SDL2-based debug GUI
+add_library(oxr_sdl2 STATIC oxr_sdl2_hack.c)
+target_link_libraries(oxr_sdl2 PRIVATE aux_util)
+if(XRT_HAVE_OPENGL)
+	target_link_libraries(oxr_sdl2 PUBLIC aux_ogl)
+endif()
+if(XRT_HAVE_SDL2)
+	target_link_libraries(oxr_sdl2 PRIVATE st_gui xrt-external-imgui-sdl2 ${SDL2_LIBRARIES})
+
+	if(XRT_BUILD_DRIVER_QWERTY)
+		target_link_libraries(oxr_sdl2 PRIVATE drv_qwerty drv_qwerty_includes)
+	endif()
+endif()
+
+if(XRT_FEATURE_CLIENT_DEBUG_GUI)
+	target_link_libraries(${RUNTIME_TARGET} PRIVATE oxr_sdl2)
 endif()

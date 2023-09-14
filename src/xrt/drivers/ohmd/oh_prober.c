@@ -20,24 +20,23 @@
 #include "oh_device.h"
 
 
-DEBUG_GET_ONCE_BOOL_OPTION(oh_spew, "OH_PRINT_SPEW", false)
-DEBUG_GET_ONCE_BOOL_OPTION(oh_debug, "OH_PRINT_DEBUG", false)
-DEBUG_GET_ONCE_BOOL_OPTION(oh_external, "OH_EXTERNAL_DRIVER", false)
-
+/*!
+ * @implements xrt_auto_prober
+ */
 struct oh_prober
 {
 	struct xrt_auto_prober base;
 	ohmd_context *ctx;
-	bool print_spew;
-	bool print_debug;
 };
 
+//! @private @memberof oh_prober
 static inline struct oh_prober *
 oh_prober(struct xrt_auto_prober *p)
 {
 	return (struct oh_prober *)p;
 }
 
+//! @public @memberof oh_prober
 static void
 oh_prober_destroy(struct xrt_auto_prober *p)
 {
@@ -51,83 +50,28 @@ oh_prober_destroy(struct xrt_auto_prober *p)
 	free(ohp);
 }
 
-static struct xrt_device *
+//! @public @memberof oh_prober
+static int
 oh_prober_autoprobe(struct xrt_auto_prober *xap,
+                    cJSON *attached_data,
                     bool no_hmds,
-                    struct xrt_prober *xp)
+                    struct xrt_prober *xp,
+                    struct xrt_device **out_xdevs)
 {
 	struct oh_prober *ohp = oh_prober(xap);
 
-	// Do not use OpenHMD if we are not looking for HMDs.
-	if (no_hmds) {
-		return NULL;
-	}
-
-	int device_idx = -1;
-
-	/* Probe for devices */
-	int num_devices = ohmd_ctx_probe(ohp->ctx);
-
-	/* Then loop */
-	for (int i = 0; i < num_devices; i++) {
-		int device_class = 0, device_flags = 0;
-		const char *prod = NULL;
-
-		ohmd_list_geti(ohp->ctx, i, OHMD_DEVICE_CLASS, &device_class);
-		ohmd_list_geti(ohp->ctx, i, OHMD_DEVICE_FLAGS, &device_flags);
-
-		if (device_class != OHMD_DEVICE_CLASS_HMD) {
-			OH_DEBUG(ohp, "Rejecting device idx %i, is not a HMD.",
-			         i);
-			continue;
-		}
-
-		if (device_flags & OHMD_DEVICE_FLAGS_NULL_DEVICE) {
-			OH_DEBUG(ohp,
-			         "Rejecting device idx %i, is a NULL device.",
-			         i);
-			continue;
-		}
-
-		prod = ohmd_list_gets(ohp->ctx, i, OHMD_PRODUCT);
-		if (strcmp(prod, "External Device") == 0 &&
-		    !debug_get_bool_option_oh_external()) {
-			OH_DEBUG(
-			    ohp,
-			    "Rejecting device idx %i, is a External device.",
-			    i);
-			continue;
-		}
-
-		OH_DEBUG(ohp, "Selecting device idx %i", i);
-		device_idx = i;
-		break;
-	}
-
-	if (device_idx < 0) {
-		return NULL;
-	}
-
-	const char *prod = ohmd_list_gets(ohp->ctx, device_idx, OHMD_PRODUCT);
-	ohmd_device *dev = ohmd_list_open_device(ohp->ctx, device_idx);
-	if (dev == NULL) {
-		return NULL;
-	}
-
-	struct oh_device *ohd = oh_device_create(
-	    ohp->ctx, dev, prod, ohp->print_spew, ohp->print_debug);
-	return &ohd->base;
+	int num_created = oh_device_create(ohp->ctx, no_hmds, out_xdevs);
+	return num_created;
 }
 
 struct xrt_auto_prober *
 oh_create_auto_prober()
 {
 	struct oh_prober *ohp = U_TYPED_CALLOC(struct oh_prober);
+	ohp->base.name = "OpenHMD";
 	ohp->base.destroy = oh_prober_destroy;
 	ohp->base.lelo_dallas_autoprobe = oh_prober_autoprobe;
 	ohp->ctx = ohmd_ctx_create();
-	ohp->print_spew = debug_get_bool_option_oh_spew();
-	ohp->print_debug = debug_get_bool_option_oh_debug();
 
 	return &ohp->base;
 }

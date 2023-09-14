@@ -6,10 +6,43 @@
  * @author Jakob Bornecrantz <jakob@collabora.com>
  */
 
-#include "target_lists.h"
+#include "xrt/xrt_config_build.h"
 
-int
-xrt_prober_create(struct xrt_prober **out_xp)
+#include "util/u_trace_marker.h"
+
+
+#ifdef XRT_FEATURE_SERVICE
+
+// Insert the on load constructor to setup trace marker.
+U_TRACE_TARGET_SETUP(U_TRACE_WHICH_OPENXR)
+
+#include "xrt/xrt_instance.h"
+
+// Forward declaration
+xrt_result_t
+ipc_instance_create(struct xrt_instance_info *i_info, struct xrt_instance **out_xinst);
+
+xrt_result_t
+xrt_instance_create(struct xrt_instance_info *ii, struct xrt_instance **out_xinst)
 {
-	return xrt_prober_create_with_lists(out_xp, &target_lists);
+	u_trace_marker_init();
+
+	XRT_TRACE_MARKER();
+
+	return ipc_instance_create(ii, out_xinst);
 }
+
+#else
+
+// Insert the on load constructor to setup trace marker.
+U_TRACE_TARGET_SETUP(U_TRACE_WHICH_SERVICE)
+
+/*
+ * For non-service runtime, xrt_instance_create defined in target_instance
+ * helper lib, so we just have a placeholder symbol below to silence warnings about
+ * empty translation units.
+ */
+#include <xrt/xrt_compiler.h>
+XRT_MAYBE_UNUSED static const int PLACEHOLDER = 42;
+
+#endif

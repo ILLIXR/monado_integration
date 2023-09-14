@@ -23,15 +23,16 @@
 extern "C" {
 #endif
 
-#define NUM_XDEVS 8
 
 struct xrt_device;
 struct xrt_prober;
 struct xrt_fs;
 struct xrt_frame_sink;
 struct xrt_frame_context;
+struct xrt_settings_tracking;
 struct time_state;
 struct gui_scene_manager;
+struct xrt_system_devices;
 
 
 /*!
@@ -45,8 +46,8 @@ struct gui_program
 
 	struct gui_scene_manager *gsm;
 
-	struct time_state *timekeeping;
-	struct xrt_device *xdevs[NUM_XDEVS];
+	struct xrt_system_devices *xsysd;
+	struct xrt_instance *instance;
 	struct xrt_prober *xp;
 
 	struct gui_ogl_texture *texs[256];
@@ -54,7 +55,10 @@ struct gui_program
 };
 
 /*!
+ * @interface gui_scene
  * A single currently running scene.
+ *
+ * @ingroup gui
  */
 struct gui_scene
 {
@@ -120,9 +124,7 @@ gui_prober_teardown(struct gui_program *p);
  * @ingroup gui
  */
 struct gui_ogl_texture *
-gui_ogl_sink_create(const char *name,
-                    struct xrt_frame_context *xfctx,
-                    struct xrt_frame_sink **out_sink);
+gui_ogl_sink_create(const char *name, struct xrt_frame_context *xfctx, struct xrt_frame_sink **out_sink);
 
 /*!
  * Update the texture to the latest received frame.
@@ -130,7 +132,7 @@ gui_ogl_sink_create(const char *name,
  * @ingroup gui
  */
 void
-gui_ogl_sink_update(struct gui_ogl_texture *);
+gui_ogl_sink_update(struct gui_ogl_texture * /*tex*/);
 
 /*!
  * Push the scene to the top of the lists.
@@ -196,12 +198,12 @@ void
 gui_scene_select_video_calibrate(struct gui_program *p);
 
 /*!
- * Shows a UI that lets you select a video device and mode for testing.
+ * Shows a UI that lets you set up tracking overrides.
  *
  * @ingroup gui
  */
 void
-gui_scene_select_video_test(struct gui_program *p);
+gui_scene_tracking_overrides(struct gui_program *p);
 
 /*!
  * Regular debug UI.
@@ -212,18 +214,25 @@ void
 gui_scene_debug(struct gui_program *p);
 
 /*!
- * Given the frameserver runs some debug code on it.
+ * Create a recording view scene.
  *
  * @ingroup gui
  */
 void
-gui_scene_debug_video(struct gui_program *p,
-                      struct xrt_frame_context *xfctx,
-                      struct xrt_fs *xfs,
-                      size_t mode);
+gui_scene_record(struct gui_program *p, const char *camera);
+
+/*!
+ * Remote control debugging UI.
+ *
+ * @param Optional address.
+ * @ingroup gui
+ */
+void
+gui_scene_remote(struct gui_program *p, const char *address);
 
 /*!
  * Given the frameserver runs the calibration code on it.
+ * Claims ownership of @p s.
  *
  * @ingroup gui
  */
@@ -231,7 +240,7 @@ void
 gui_scene_calibrate(struct gui_program *p,
                     struct xrt_frame_context *xfctx,
                     struct xrt_fs *xfs,
-                    size_t mode);
+                    struct xrt_settings_tracking *s);
 
 
 #ifdef __cplusplus

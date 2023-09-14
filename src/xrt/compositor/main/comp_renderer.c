@@ -1,22 +1,64 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2022, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
  * @brief  Compositor rendering code.
  * @author Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
  * @author Jakob Bornecrantz <jakob@collabora.com>
- * @ingroup comp
+ * @author Ryan Pavlik <ryan.pavlik@collabora.com>
+ * @author Moses Turner <moses@collabora.com>
+ * @ingroup comp_main
  */
+
+#include "render/render_interface.h"
+#include "xrt/xrt_defines.h"
+#include "xrt/xrt_frame.h"
+#include "xrt/xrt_compositor.h"
+
+#include "os/os_time.h"
+
+#include "math/m_api.h"
+#include "math/m_vec3.h"
+#include "math/m_matrix_4x4_f64.h"
+#include "math/m_space.h"
+
+#include "util/u_misc.h"
+#include "util/u_trace_marker.h"
+#include "util/u_distortion_mesh.h"
+#include "util/u_sink.h"
+#include "util/u_var.h"
+#include "util/u_frame.h"
+#include "util/u_frame_times_widget.h"
+
+#include "main/comp_layer_renderer.h"
+
+#ifdef XRT_FEATURE_WINDOW_PEEK
+#include "main/comp_window_peek.h"
+#endif
+
+#include "vk/vk_helpers.h"
+#include "vk/vk_image_readback_to_xf_pool.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
+#include <inttypes.h>
 
-#include "util/u_misc.h"
+#include "../drivers/illixr/illixr_component.h"
 
-#include "xrt/xrt_compositor.h"
-#include "main/comp_distortion.h"
+/*
+ *
+ * Small internal helpers.
+ *
+ */
+
+#define CHAIN(STRUCT, NEXT)                                                                                            \
+	do {                                                                                                           \
+		(STRUCT).pNext = NEXT;                                                                                 \
+		NEXT = (VkBaseInStructure *)&(STRUCT);                                                                 \
+	} while (false)
 
 
 /*
@@ -28,152 +70,73 @@
 /*!
  * Holds associated vulkan objects and state to render with a distortion.
  *
- * @ingroup comp
+ * @ingroup comp_main
  */
 struct comp_renderer
 {
-	bool one_buffer_imported[2];
+	//! @name Durable members
+	//! @brief These don't require the images to be created and don't depend on it.
+	//! @{
 
-	uint32_t current_buffer;
-
-	VkQueue queue;
-	VkRenderPass render_pass;
-	VkDescriptorPool descriptor_pool;
-	VkPipelineCache pipeline_cache;
+	//! The compositor we were created by
+	struct comp_compositor *c;
+	struct comp_settings *settings;
 
 	struct
 	{
-		VkSemaphore present_complete;
-		VkSemaphore render_complete;
-	} semaphores;
+		// Hint: enable/disable is in c->mirroring_to_debug_gui. It's there because comp_renderer is just a
+		// forward decl to comp_compositor.c
 
-	VkCommandBuffer *cmd_buffers;
-	uint32_t num_cmd_buffers;
-	VkFramebuffer *frame_buffers;
-	uint32_t num_frame_buffers;
+		struct u_frame_times_widget push_frame_times;
 
-	struct comp_swapchain_image dummy_images[2];
+		float target_frame_time_ms;
+		uint64_t last_push_ts_ns;
+		int push_every_frame_out_of_X;
 
-	struct comp_compositor *c;
-	struct comp_settings *settings;
-	struct comp_distortion *distortion;
+		struct u_sink_debug debug_sink;
+		VkExtent2D image_extent;
+		uint64_t sequence;
+
+		struct vk_image_readback_to_xf_pool *pool;
+
+	} mirror_to_debug_gui;
+
+	//! @}
+
+	//! @name Image-dependent members
+	//! @{
+
+	//! Index of the current buffer/image
+	int32_t acquired_buffer;
+
+	//! Which buffer was last submitted and has a fence pending.
+	int32_t fenced_buffer;
+
+	/*!
+	 * Array of "rendering" target resources equal in size to the number of
+	 * comp_target images. Each target resources holds all of the resources
+	 * needed to render to that target and its views.
+	 */
+	struct render_gfx_target_resources *rtr_array;
+
+	/*!
+	 * Array of fences equal in size to the number of comp_target images.
+	 */
+	VkFence *fences;
+
+	/*!
+	 * The number of renderings/fences we've created: set from comp_target when we use that data.
+	 */
+	uint32_t buffer_count;
+
+	/*!
+	 * @brief The layer renderer, which actually knows how to composite layers.
+	 *
+	 * Depends on the target extents.
+	 */
+	struct comp_layer_renderer *lr;
+	//! @}
 };
-
-
-/*
- *
- * Pre declare functions.
- *
- */
-
-static void
-renderer_create(struct comp_renderer *r, struct comp_compositor *c);
-
-static void
-renderer_init(struct comp_renderer *r);
-
-static void
-renderer_set_swapchain_image(struct comp_renderer *r,
-                             uint32_t eye,
-                             struct comp_swapchain_image *image,
-                             uint32_t layer);
-
-static void
-renderer_render(struct comp_renderer *r);
-
-static void
-renderer_submit_queue(struct comp_renderer *r);
-
-static void
-renderer_build_command_buffers(struct comp_renderer *r);
-
-static void
-renderer_rebuild_command_buffers(struct comp_renderer *r);
-
-static void
-renderer_build_command_buffer(struct comp_renderer *r,
-                              VkCommandBuffer command_buffer,
-                              VkFramebuffer framebuffer);
-
-static void
-renderer_init_descriptor_pool(struct comp_renderer *r);
-
-static void
-renderer_init_dummy_images(struct comp_renderer *r);
-
-static void
-renderer_create_frame_buffer(struct comp_renderer *r,
-                             VkFramebuffer *frame_buffer,
-                             uint32_t num_attachements,
-                             VkImageView *attachments);
-
-static void
-renderer_allocate_command_buffers(struct comp_renderer *r, uint32_t count);
-
-static void
-renderer_destroy_command_buffers(struct comp_renderer *r);
-
-static void
-renderer_create_pipeline_cache(struct comp_renderer *r);
-
-static void
-renderer_init_semaphores(struct comp_renderer *r);
-
-static void
-renderer_resize(struct comp_renderer *r);
-
-static void
-renderer_create_frame_buffers(struct comp_renderer *r, uint32_t count);
-
-static void
-renderer_create_render_pass(struct comp_renderer *r);
-
-static void
-renderer_aquire_swapchain_image(struct comp_renderer *r);
-
-static void
-renderer_present_swapchain_image(struct comp_renderer *r);
-
-static void
-renderer_destroy(struct comp_renderer *r);
-
-
-/*
- *
- * Interface functions.
- *
- */
-
-struct comp_renderer *
-comp_renderer_create(struct comp_compositor *c)
-{
-	struct comp_renderer *r = U_TYPED_CALLOC(struct comp_renderer);
-
-	renderer_create(r, c);
-	renderer_init(r);
-
-	return r;
-}
-
-void
-comp_renderer_frame(struct comp_renderer *r,
-                    struct comp_swapchain_image *left,
-                    uint32_t left_layer,
-                    struct comp_swapchain_image *right,
-                    uint32_t right_layer)
-{
-	renderer_set_swapchain_image(r, 0, left, left_layer);
-	renderer_set_swapchain_image(r, 1, right, right_layer);
-	renderer_render(r);
-	r->c->vk.vkDeviceWaitIdle(r->c->vk.device);
-}
-
-void
-comp_renderer_destroy(struct comp_renderer *r)
-{
-	renderer_destroy(r);
-	free(r);
-}
 
 
 /*
@@ -183,837 +146,1914 @@ comp_renderer_destroy(struct comp_renderer *r)
  */
 
 static void
+renderer_wait_gpu_idle(struct comp_renderer *r)
+{
+	COMP_TRACE_MARKER();
+	struct vk_bundle *vk = &r->c->base.vk;
+
+	os_mutex_lock(&vk->queue_mutex);
+	vk->vkDeviceWaitIdle(vk->device);
+	os_mutex_unlock(&vk->queue_mutex);
+}
+
+static void
+calc_viewport_data(struct comp_renderer *r,
+                   struct render_viewport_data *out_l_viewport_data,
+                   struct render_viewport_data *out_r_viewport_data)
+{
+	struct comp_compositor *c = r->c;
+
+	bool pre_rotate = false;
+	if (r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+	    r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+		COMP_SPEW(c, "Swapping width and height, since we are pre rotating");
+		pre_rotate = true;
+	}
+
+	int w_i32 = pre_rotate ? r->c->xdev->hmd->screens[0].h_pixels : r->c->xdev->hmd->screens[0].w_pixels;
+	int h_i32 = pre_rotate ? r->c->xdev->hmd->screens[0].w_pixels : r->c->xdev->hmd->screens[0].h_pixels;
+
+	float scale_x = (float)r->c->target->width / (float)w_i32;
+	float scale_y = (float)r->c->target->height / (float)h_i32;
+
+	struct xrt_view *l_v = &r->c->xdev->hmd->views[0];
+	struct xrt_view *r_v = &r->c->xdev->hmd->views[1];
+
+	struct render_viewport_data l_viewport_data;
+	struct render_viewport_data r_viewport_data;
+
+	if (pre_rotate) {
+		l_viewport_data = (struct render_viewport_data){
+		    .x = (uint32_t)(l_v->viewport.y_pixels * scale_x),
+		    .y = (uint32_t)(l_v->viewport.x_pixels * scale_y),
+		    .w = (uint32_t)(l_v->viewport.h_pixels * scale_x),
+		    .h = (uint32_t)(l_v->viewport.w_pixels * scale_y),
+		};
+		r_viewport_data = (struct render_viewport_data){
+		    .x = (uint32_t)(r_v->viewport.y_pixels * scale_x),
+		    .y = (uint32_t)(r_v->viewport.x_pixels * scale_y),
+		    .w = (uint32_t)(r_v->viewport.h_pixels * scale_x),
+		    .h = (uint32_t)(r_v->viewport.w_pixels * scale_y),
+		};
+	} else {
+		l_viewport_data = (struct render_viewport_data){
+		    .x = (uint32_t)(l_v->viewport.x_pixels * scale_x),
+		    .y = (uint32_t)(l_v->viewport.y_pixels * scale_y),
+		    .w = (uint32_t)(l_v->viewport.w_pixels * scale_x),
+		    .h = (uint32_t)(l_v->viewport.h_pixels * scale_y),
+		};
+		r_viewport_data = (struct render_viewport_data){
+		    .x = (uint32_t)(r_v->viewport.x_pixels * scale_x),
+		    .y = (uint32_t)(r_v->viewport.y_pixels * scale_y),
+		    .w = (uint32_t)(r_v->viewport.w_pixels * scale_x),
+		    .h = (uint32_t)(r_v->viewport.h_pixels * scale_y),
+		};
+	}
+
+	*out_l_viewport_data = l_viewport_data;
+	*out_r_viewport_data = r_viewport_data;
+}
+
+//! @pre comp_target_has_images(r->c->target)
+static void
+renderer_build_rendering_target_resources(struct comp_renderer *r,
+                                          struct render_gfx_target_resources *rtr,
+                                          uint32_t index)
+{
+	COMP_TRACE_MARKER();
+
+	struct comp_compositor *c = r->c;
+
+	struct render_gfx_target_data data;
+	data.format = r->c->target->format;
+	data.is_external = true;
+	data.width = r->c->target->width;
+	data.height = r->c->target->height;
+
+	render_gfx_target_resources_init(rtr, &c->nr, r->c->target->images[index].view, &data);
+}
+
+//! @pre comp_target_has_images(r->c->target)
+static void
+renderer_build_rendering(struct comp_renderer *r,
+                         struct render_gfx *rr,
+                         struct render_gfx_target_resources *rtr,
+                         VkSampler src_samplers[2],
+                         VkImageView src_image_views[2],
+                         struct xrt_normalized_rect src_norm_rects[2])
+{
+	COMP_TRACE_MARKER();
+
+	struct comp_compositor *c = r->c;
+
+
+	/*
+	 * Rendering
+	 */
+
+	bool pre_rotate = false;
+	if (r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+	    r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+		COMP_SPEW(c, "Swapping width and height, since we are pre rotating");
+		pre_rotate = true;
+	}
+
+	struct render_viewport_data l_viewport_data;
+	struct render_viewport_data r_viewport_data;
+
+	calc_viewport_data(r, &l_viewport_data, &r_viewport_data);
+
+	struct xrt_view *l_v = &r->c->xdev->hmd->views[0];
+	struct xrt_view *r_v = &r->c->xdev->hmd->views[1];
+
+
+	/*
+	 * Init
+	 */
+
+	render_gfx_init(rr, &c->nr);
+	render_gfx_begin(rr);
+
+
+	/*
+	 * Update
+	 */
+
+	struct render_gfx_mesh_ubo_data distortion_data[2] = {
+	    {
+	        .vertex_rot = l_v->rot,
+	        .post_transform = src_norm_rects[0],
+	    },
+	    {
+	        .vertex_rot = r_v->rot,
+	        .post_transform = src_norm_rects[1],
+	    },
+	};
+
+	const struct xrt_matrix_2x2 rotation_90_cw = {{
+	    .vecs =
+	        {
+	            {0, 1},
+	            {-1, 0},
+	        },
+	}};
+
+	if (pre_rotate) {
+		math_matrix_2x2_multiply(&distortion_data[0].vertex_rot,  //
+		                         &rotation_90_cw,                 //
+		                         &distortion_data[0].vertex_rot); //
+		math_matrix_2x2_multiply(&distortion_data[1].vertex_rot,  //
+		                         &rotation_90_cw,                 //
+		                         &distortion_data[1].vertex_rot); //
+	}
+
+	render_gfx_update_distortion(rr,                   //
+	                             0,                    // view_index
+	                             src_samplers[0],      //
+	                             src_image_views[0],   //
+	                             &distortion_data[0]); //
+
+	render_gfx_update_distortion(rr,                   //
+	                             1,                    // view_index
+	                             src_samplers[1],      //
+	                             src_image_views[1],   //
+	                             &distortion_data[1]); //
+
+
+	/*
+	 * Target
+	 */
+
+	render_gfx_begin_target( //
+	    rr,                  //
+	    rtr);                //
+
+
+	/*
+	 * Viewport one
+	 */
+
+	render_gfx_begin_view(rr,                //
+	                      0,                 // view_index
+	                      &l_viewport_data); // viewport_data
+
+	render_gfx_distortion(rr);
+
+	render_gfx_end_view(rr);
+
+
+	/*
+	 * Viewport two
+	 */
+
+	render_gfx_begin_view(rr,                //
+	                      1,                 // view_index
+	                      &r_viewport_data); // viewport_data
+
+	render_gfx_distortion(rr);
+
+	render_gfx_end_view(rr);
+
+
+	/*
+	 * End
+	 */
+
+	render_gfx_end_target(rr);
+
+	// Make the command buffer usable.
+	render_gfx_end(rr);
+}
+
+/*!
+ * @pre comp_target_has_images(r->c->target)
+ * Update r->buffer_count before calling.
+ */
+static void
+renderer_create_renderings_and_fences(struct comp_renderer *r)
+{
+	assert(r->fences == NULL);
+	if (r->buffer_count == 0) {
+		COMP_ERROR(r->c, "Requested 0 command buffers.");
+		return;
+	}
+
+	COMP_DEBUG(r->c, "Allocating %d Command Buffers.", r->buffer_count);
+
+	struct vk_bundle *vk = &r->c->base.vk;
+
+	bool use_compute = r->settings->use_compute;
+	if (!use_compute) {
+		r->rtr_array = U_TYPED_ARRAY_CALLOC(struct render_gfx_target_resources, r->buffer_count);
+
+		for (uint32_t i = 0; i < r->buffer_count; ++i) {
+			renderer_build_rendering_target_resources(r, &r->rtr_array[i], i);
+		}
+	}
+
+	r->fences = U_TYPED_ARRAY_CALLOC(VkFence, r->buffer_count);
+
+	for (uint32_t i = 0; i < r->buffer_count; i++) {
+		VkFenceCreateInfo fence_info = {
+		    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		    .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+		};
+
+		VkResult ret = vk->vkCreateFence( //
+		    vk->device,                   //
+		    &fence_info,                  //
+		    NULL,                         //
+		    &r->fences[i]);               //
+		if (ret != VK_SUCCESS) {
+			COMP_ERROR(r->c, "vkCreateFence: %s", vk_result_string(ret));
+		}
+	}
+}
+
+static void
+renderer_close_renderings_and_fences(struct comp_renderer *r)
+{
+	struct vk_bundle *vk = &r->c->base.vk;
+	// Renderings
+	if (r->buffer_count > 0 && r->rtr_array != NULL) {
+		for (uint32_t i = 0; i < r->buffer_count; i++) {
+			render_gfx_target_resources_close(&r->rtr_array[i]);
+		}
+
+		free(r->rtr_array);
+		r->rtr_array = NULL;
+	}
+
+	// Fences
+	if (r->buffer_count > 0 && r->fences != NULL) {
+		for (uint32_t i = 0; i < r->buffer_count; i++) {
+			vk->vkDestroyFence(vk->device, r->fences[i], NULL);
+			r->fences[i] = VK_NULL_HANDLE;
+		}
+		free(r->fences);
+		r->fences = NULL;
+	}
+
+	r->buffer_count = 0;
+	r->acquired_buffer = -1;
+	r->fenced_buffer = -1;
+}
+
+//! @pre comp_target_check_ready(r->c->target)
+static void
+renderer_create_layer_renderer(struct comp_renderer *r)
+{
+	struct vk_bundle *vk = &r->c->base.vk;
+
+	assert(comp_target_check_ready(r->c->target));
+
+	uint32_t layer_count = 0;
+	if (r->lr != NULL) {
+		// if we already had one, re-populate it after recreation.
+		layer_count = r->lr->layer_count;
+		comp_layer_renderer_destroy(&r->lr);
+	}
+
+	VkExtent2D extent;
+
+	extent = (VkExtent2D){
+	    .width = r->c->view_extents.width,
+	    .height = r->c->view_extents.height,
+	};
+
+	r->lr = comp_layer_renderer_create(vk, &r->c->shaders, extent, VK_FORMAT_R8G8B8A8_UNORM);
+	if (layer_count != 0) {
+		comp_layer_renderer_allocate_layers(r->lr, layer_count);
+	}
+}
+
+/*!
+ * @brief Ensure that target images and renderings are created, if possible.
+ *
+ * @param r Self pointer
+ * @param force_recreate If true, will tear down and re-create images and renderings, e.g. for a resize
+ *
+ * @returns true if images and renderings are ready and created.
+ *
+ * @private @memberof comp_renderer
+ * @ingroup comp_main
+ */
+static bool
+renderer_ensure_images_and_renderings(struct comp_renderer *r, bool force_recreate)
+{
+	struct comp_compositor *c = r->c;
+	struct comp_target *target = c->target;
+
+	if (!comp_target_check_ready(target)) {
+		// Not ready, so can't render anything.
+		return false;
+	}
+
+	// We will create images if we don't have any images or if we were told to recreate them.
+	bool create = force_recreate || !comp_target_has_images(target) || (r->buffer_count == 0);
+	if (!create) {
+		return true;
+	}
+
+	COMP_DEBUG(c, "Creating images and renderings (force_recreate: %s).", force_recreate ? "true" : "false");
+
+	/*
+	 * This makes sure that any pending command buffer has completed
+	 * and all resources referred by it can now be manipulated. This
+	 * make sure that validation doesn't complain. This is done
+	 * during resize so isn't time critical.
+	 */
+	renderer_wait_gpu_idle(r);
+
+	// Make we sure we destroy all dependent things before creating new images.
+	renderer_close_renderings_and_fences(r);
+
+	VkImageUsageFlags image_usage = 0;
+	if (r->settings->use_compute) {
+		image_usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	} else {
+		image_usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	if (c->peek) {
+		image_usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	}
+
+	comp_target_create_images(           //
+	    r->c->target,                    //
+	    r->c->settings.preferred.width,  //
+	    r->c->settings.preferred.height, //
+	    r->settings->color_format,       //
+	    r->settings->color_space,        //
+	    image_usage,                     //
+	    r->settings->present_mode);      //
+
+	bool pre_rotate = false;
+	if (r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+	    r->c->target->surface_transform & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+		pre_rotate = true;
+	}
+
+	// @todo: is it safe to fail here?
+	if (!render_ensure_distortion_buffer(&r->c->nr, &r->c->base.vk, r->c->xdev, pre_rotate))
+		return false;
+
+	r->buffer_count = r->c->target->image_count;
+
+	renderer_create_layer_renderer(r);
+	renderer_create_renderings_and_fences(r);
+
+	assert(r->buffer_count != 0);
+
+	return true;
+}
+
+//! Create renderer and initialize non-image-dependent members
+static void
 renderer_create(struct comp_renderer *r, struct comp_compositor *c)
 {
 	r->c = c;
 	r->settings = &c->settings;
 
-	r->one_buffer_imported[0] = false;
-	r->one_buffer_imported[1] = false;
-	r->current_buffer = 0;
-	r->queue = VK_NULL_HANDLE;
-	r->render_pass = VK_NULL_HANDLE;
-	r->descriptor_pool = VK_NULL_HANDLE;
-	r->pipeline_cache = VK_NULL_HANDLE;
-	r->semaphores.present_complete = VK_NULL_HANDLE;
-	r->semaphores.render_complete = VK_NULL_HANDLE;
+	r->acquired_buffer = -1;
+	r->fenced_buffer = -1;
+	r->rtr_array = NULL;
 
-	U_ZERO(&r->dummy_images[0]);
-	U_ZERO(&r->dummy_images[1]);
-	r->dummy_images[0].views = U_TYPED_CALLOC(VkImageView);
-	r->dummy_images[1].views = U_TYPED_CALLOC(VkImageView);
+	// Try to early-allocate these, in case we can.
+	renderer_ensure_images_and_renderings(r, false);
 
-	r->distortion = NULL;
-	r->cmd_buffers = NULL;
-	r->frame_buffers = NULL;
+	double orig_width = r->lr->extent.width;
+	double orig_height = r->lr->extent.height;
+
+	double target_height = 1080;
+
+	double mul = target_height / orig_height;
+
+	// Casts seem to always round down; we don't want that here.
+	r->mirror_to_debug_gui.image_extent.width = (uint32_t)(round(orig_width * mul));
+	r->mirror_to_debug_gui.image_extent.height = (uint32_t)target_height;
+
+
+	// We want the images to have even widths/heights so that libx264 can encode them properly; no other reason.
+	if (r->mirror_to_debug_gui.image_extent.width % 2 == 1) {
+		r->mirror_to_debug_gui.image_extent.width += 1;
+	}
+
+	u_sink_debug_init(&r->mirror_to_debug_gui.debug_sink);
+
+	struct vk_bundle *vk = &r->c->base.vk;
+
+	vk_image_readback_to_xf_pool_create(vk, r->mirror_to_debug_gui.image_extent, &r->mirror_to_debug_gui.pool,
+	                                    XRT_FORMAT_R8G8B8X8);
 }
 
 static void
-renderer_submit_queue(struct comp_renderer *r)
+renderer_wait_for_last_fence(struct comp_renderer *r)
 {
-	struct vk_bundle *vk = &r->c->vk;
+	COMP_TRACE_MARKER();
+
+	if (r->fenced_buffer < 0) {
+		return;
+	}
+
+	struct vk_bundle *vk = &r->c->base.vk;
 	VkResult ret;
 
-	VkPipelineStageFlags stage_flags[1] = {
-	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	ret = vk->vkWaitForFences(vk->device, 1, &r->fences[r->fenced_buffer], VK_TRUE, UINT64_MAX);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(r->c, "vkWaitForFences: %s", vk_result_string(ret));
+	}
+
+	r->fenced_buffer = -1;
+}
+
+static void
+renderer_submit_queue(struct comp_renderer *r, VkCommandBuffer cmd, VkPipelineStageFlags pipeline_stage_flag)
+{
+	COMP_TRACE_MARKER();
+
+	struct vk_bundle *vk = &r->c->base.vk;
+	VkResult ret;
+
+
+	/*
+	 * Wait for previous frame's work to complete.
+	 */
+
+	// Wait for the last fence, if any.
+	renderer_wait_for_last_fence(r);
+	assert(r->fenced_buffer < 0);
+
+	assert(r->acquired_buffer >= 0);
+	ret = vk->vkResetFences(vk->device, 1, &r->fences[r->acquired_buffer]);
+	if (ret != VK_SUCCESS) {
+		COMP_ERROR(r->c, "vkResetFences: %s", vk_result_string(ret));
+	}
+
+
+	/*
+	 * Regular semaphore setup.
+	 */
+
+	struct comp_target *ct = r->c->target;
+#define WAIT_SEMAPHORE_COUNT 1
+
+	VkSemaphore wait_sems[WAIT_SEMAPHORE_COUNT] = {ct->semaphores.present_complete};
+	VkPipelineStageFlags stage_flags[WAIT_SEMAPHORE_COUNT] = {pipeline_stage_flag};
+
+	VkSemaphore *wait_sems_ptr = NULL;
+	VkPipelineStageFlags *stage_flags_ptr = NULL;
+	uint32_t wait_sem_count = 0;
+	if (wait_sems[0] != VK_NULL_HANDLE) {
+		wait_sems_ptr = wait_sems;
+		stage_flags_ptr = stage_flags;
+		wait_sem_count = WAIT_SEMAPHORE_COUNT;
+	}
+
+	// Next pointer for VkSubmitInfo
+	const void *next = NULL;
+
+#ifdef VK_KHR_timeline_semaphore
+	assert(r->c->frame.rendering.id >= 0);
+	uint64_t render_complete_signal_values[WAIT_SEMAPHORE_COUNT] = {(uint64_t)r->c->frame.rendering.id};
+
+	VkTimelineSemaphoreSubmitInfoKHR timeline_info = {
+	    .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR,
 	};
+
+	if (ct->semaphores.render_complete_is_timeline) {
+		timeline_info = (VkTimelineSemaphoreSubmitInfoKHR){
+		    .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO_KHR,
+		    .signalSemaphoreValueCount = WAIT_SEMAPHORE_COUNT,
+		    .pSignalSemaphoreValues = render_complete_signal_values,
+		};
+
+		CHAIN(timeline_info, next);
+	}
+#endif
 
 	VkSubmitInfo comp_submit_info = {
 	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	    .pNext = NULL,
-	    .waitSemaphoreCount = 1,
-	    .pWaitSemaphores = &r->semaphores.present_complete,
-	    .pWaitDstStageMask = stage_flags,
+	    .pNext = next,
+	    .pWaitDstStageMask = stage_flags_ptr,
+	    .pWaitSemaphores = wait_sems_ptr,
+	    .waitSemaphoreCount = wait_sem_count,
 	    .commandBufferCount = 1,
-	    .pCommandBuffers = &r->cmd_buffers[r->current_buffer],
+	    .pCommandBuffers = &cmd,
 	    .signalSemaphoreCount = 1,
-	    .pSignalSemaphores = &r->semaphores.render_complete,
+	    .pSignalSemaphores = &ct->semaphores.render_complete,
 	};
 
-	ret = vk->vkQueueSubmit(r->queue, 1, &comp_submit_info, VK_NULL_HANDLE);
+	ret = vk_locked_submit(vk, vk->queue, 1, &comp_submit_info, r->fences[r->acquired_buffer]);
 	if (ret != VK_SUCCESS) {
 		COMP_ERROR(r->c, "vkQueueSubmit: %s", vk_result_string(ret));
 	}
+
+	// This buffer now have a pending fence.
+	r->fenced_buffer = r->acquired_buffer;
 }
 
 static void
-renderer_build_command_buffers(struct comp_renderer *r)
+renderer_get_view_projection(struct comp_renderer *r)
 {
-	for (uint32_t i = 0; i < r->num_cmd_buffers; ++i)
-		renderer_build_command_buffer(r, r->cmd_buffers[i],
-		                              r->frame_buffers[i]);
-}
+	COMP_TRACE_MARKER();
 
-static void
-renderer_rebuild_command_buffers(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
+	struct xrt_space_relation head_relation = XRT_SPACE_RELATION_ZERO;
+	struct xrt_fov fovs[2] = {0};
+	struct xrt_pose poses[2] = {0};
 
-
-	vk->vkFreeCommandBuffers(vk->device, vk->cmd_pool, r->num_cmd_buffers,
-	                         r->cmd_buffers);
-	renderer_allocate_command_buffers(r,
-	                                  r->c->window->swapchain.image_count);
-	renderer_build_command_buffers(r);
-}
-
-static void
-renderer_set_viewport_scissor(float scale_x,
-                              float scale_y,
-                              VkViewport *v,
-                              VkRect2D *s,
-                              struct xrt_view *view)
-{
-	v->x = view->viewport.x_pixels * scale_x;
-	v->y = view->viewport.y_pixels * scale_y;
-	v->width = view->viewport.w_pixels * scale_x;
-	v->height = view->viewport.h_pixels * scale_y;
-
-	s->offset.x = (int32_t)(view->viewport.x_pixels * scale_x);
-	s->offset.y = (int32_t)(view->viewport.y_pixels * scale_y);
-	s->extent.width = (uint32_t)(view->viewport.w_pixels * scale_x);
-	s->extent.height = (uint32_t)(view->viewport.h_pixels * scale_y);
-}
-
-static void
-renderer_build_command_buffer(struct comp_renderer *r,
-                              VkCommandBuffer command_buffer,
-                              VkFramebuffer framebuffer)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	VkClearValue clear_color = {
-	    .color = {.float32 = {0.0f, 0.0f, 0.0f, 0.0f}}};
-
-	VkCommandBufferBeginInfo command_buffer_info = {
-	    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .pInheritanceInfo = NULL,
+	struct xrt_vec3 default_eye_relation = {
+	    0.063000f, /*! @todo get actual ipd_meters */
+	    0.0f,
+	    0.0f,
 	};
 
-	ret = vk->vkBeginCommandBuffer(command_buffer, &command_buffer_info);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkBeginCommandBuffer: %s",
-		           vk_result_string(ret));
-		return;
-	}
+	xrt_device_get_view_poses(                           //
+	    r->c->xdev,                                      //
+	    &default_eye_relation,                           //
+	    r->c->frame.rendering.predicted_display_time_ns, //
+	    2,                                               //
+	    &head_relation,                                  //
+	    fovs,                                            //
+	    poses);                                          //
 
-	VkRenderPassBeginInfo render_pass_begin_info = {
-	    .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-	    .pNext = NULL,
-	    .renderPass = r->render_pass,
-	    .framebuffer = framebuffer,
-	    .renderArea =
-	        {
-	            .offset =
-	                {
-	                    .x = 0,
-	                    .y = 0,
-	                },
-	            .extent =
-	                {
-	                    .width = r->c->current.width,
-	                    .height = r->c->current.height,
-	                },
-	        },
-	    .clearValueCount = 1,
-	    .pClearValues = &clear_color,
-	};
-	vk->vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info,
-	                         VK_SUBPASS_CONTENTS_INLINE);
-
-
-	// clang-format off
-	float scale_x = (float)r->c->current.width /
-	                (float)r->c->xdev->hmd->screens[0].w_pixels;
-	float scale_y = (float)r->c->current.height /
-	                (float)r->c->xdev->hmd->screens[0].h_pixels;
-	// clang-format on
-
-	VkViewport viewport = {
-	    .x = 0,
-	    .y = 0,
-	    .width = 0,
-	    .height = 0,
-	    .minDepth = 0.0f,
-	    .maxDepth = 1.0f,
-	};
-
-	VkRect2D scissor = {
-	    .offset = {.x = 0, .y = 0},
-	    .extent = {.width = 0, .height = 0},
-	};
-
-	renderer_set_viewport_scissor(scale_x, scale_y, &viewport, &scissor,
-	                              &r->c->xdev->hmd->views[0]);
-	vk->vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-	vk->vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-	if (r->distortion->distortion_model == XRT_DISTORTION_MODEL_MESHUV) {
-		// Mesh distortion
-		comp_distortion_draw_mesh(r->distortion, command_buffer, 0);
-		renderer_set_viewport_scissor(scale_x, scale_y, &viewport,
-		                              &scissor,
-		                              &r->c->xdev->hmd->views[1]);
-		vk->vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-		vk->vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-		comp_distortion_draw_mesh(r->distortion, command_buffer, 1);
-
-	} else {
-		// 'OpenHMD' fragment shader distortion
-		comp_distortion_draw_quad(r->distortion, command_buffer, 0);
-		renderer_set_viewport_scissor(scale_x, scale_y, &viewport,
-		                              &scissor,
-		                              &r->c->xdev->hmd->views[1]);
-		vk->vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-		vk->vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-		comp_distortion_draw_quad(r->distortion, command_buffer, 1);
-	}
-
-	vk->vkCmdEndRenderPass(command_buffer);
-
-	ret = vk->vkEndCommandBuffer(command_buffer);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkEndCommandBuffer: %s",
-		           vk_result_string(ret));
-		return;
-	}
-}
-
-static void
-renderer_init_descriptor_pool(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	VkDescriptorPoolSize pool_sizes[2] = {
-	    {
-	        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-	        .descriptorCount = 4,
-	    },
-	    {
-	        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	        .descriptorCount = 2,
-	    },
-	};
-
-	VkDescriptorPoolCreateInfo descriptor_pool_info = {
-	    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .maxSets = 2,
-	    .poolSizeCount = ARRAY_SIZE(pool_sizes),
-	    .pPoolSizes = pool_sizes,
-	};
-
-	ret = vk->vkCreateDescriptorPool(vk->device, &descriptor_pool_info,
-	                                 NULL, &r->descriptor_pool);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateDescriptorPool: %s",
-		           vk_result_string(ret));
-	}
-}
-
-
-static void
-_set_image_layout(struct vk_bundle *vk,
-                  VkCommandBuffer cmd_buffer,
-                  VkImage image,
-                  VkAccessFlags src_access_mask,
-                  VkAccessFlags dst_access_mask,
-                  VkImageLayout old_layout,
-                  VkImageLayout new_layout,
-                  VkImageSubresourceRange subresource_range)
-{
-	VkImageMemoryBarrier barrier = {
-	    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-	    .pNext = NULL,
-	    .srcAccessMask = src_access_mask,
-	    .dstAccessMask = dst_access_mask,
-	    .oldLayout = old_layout,
-	    .newLayout = new_layout,
-	    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-	    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-	    .image = image,
-	    .subresourceRange = subresource_range,
-	};
-
-	vk->vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-	                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL,
-	                         0, NULL, 1, &barrier);
-}
-
-static bool
-_init_cmd_buffer(struct comp_compositor *c,
-                 VkCommandPool cmd_pool,
-                 VkCommandBuffer *out_cmd_buffer)
-{
-	struct vk_bundle *vk = &c->vk;
-
-	VkCommandBufferAllocateInfo cmd_buffer_info = {
-	    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-	    .pNext = NULL,
-	    .commandPool = cmd_pool,
-	    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-	    .commandBufferCount = 1,
-	};
-
-	VkResult ret;
-	ret = vk->vkAllocateCommandBuffers(vk->device, &cmd_buffer_info,
-	                                   out_cmd_buffer);
-	if (ret != VK_SUCCESS) {
-		fprintf(stderr,
-		        "Error: Could not initialize command buffer.\n");
-		return false;
-	}
-
-	VkCommandBufferBeginInfo begin_info = {
-	    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .pInheritanceInfo = NULL,
-	};
-	ret = vk->vkBeginCommandBuffer(*out_cmd_buffer, &begin_info);
-	if (ret != VK_SUCCESS) {
-		fprintf(stderr, "Error: Could not begin command buffer.\n");
-		return false;
-	}
-	return true;
-}
-
-static bool
-_submit_cmd_buffer(struct comp_compositor *c,
-                   VkCommandPool cmd_pool,
-                   VkCommandBuffer cmd_buffer)
-{
-	struct vk_bundle *vk = &c->vk;
-	VkResult ret;
-
-	ret = vk->vkEndCommandBuffer(cmd_buffer);
-	if (ret != VK_SUCCESS) {
-	}
-
-	VkSubmitInfo submitInfo = {
-	    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	    .pNext = NULL,
-	    .waitSemaphoreCount = 0,
-	    .pWaitSemaphores = NULL,
-	    .pWaitDstStageMask = NULL,
-	    .commandBufferCount = 1,
-	    .pCommandBuffers = &cmd_buffer,
-	    .signalSemaphoreCount = 0,
-	    .pSignalSemaphores = NULL,
-	};
-
-	VkFenceCreateInfo fence_info = {
-	    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	};
-	VkFence fence;
-	ret = vk->vkCreateFence(vk->device, &fence_info, NULL, &fence);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(c, "vkCreateFence: %s", vk_result_string(ret));
-		vk->vkFreeCommandBuffers(vk->device, cmd_pool, 1, &cmd_buffer);
-		return false;
-	}
-
-	VkQueue queue;
-	vk->vkGetDeviceQueue(vk->device, c->vk.queue_family_index, 0, &queue);
-
-	ret = vk->vkQueueSubmit(queue, 1, &submitInfo, fence);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(c, "vkCreateFence: %s", vk_result_string(ret));
-		vk->vkDestroyFence(vk->device, fence, NULL);
-		vk->vkFreeCommandBuffers(vk->device, cmd_pool, 1, &cmd_buffer);
-		return false;
-	}
-
-	ret = vk->vkWaitForFences(vk->device, 1, &fence, VK_TRUE, UINT64_MAX);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(c, "vkCreateFence: %s", vk_result_string(ret));
-		vk->vkDestroyFence(vk->device, fence, NULL);
-		vk->vkFreeCommandBuffers(vk->device, cmd_pool, 1, &cmd_buffer);
-		return false;
-	}
-
-	vk->vkDestroyFence(vk->device, fence, NULL);
-	vk->vkFreeCommandBuffers(vk->device, cmd_pool, 1, &cmd_buffer);
-
-	return true;
-}
-
-static void
-renderer_init_dummy_images(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkCommandBuffer cmd_buffer;
-	_init_cmd_buffer(r->c, vk->cmd_pool, &cmd_buffer);
-
-	VkImageSubresourceRange subresource_range = {
-	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-	    .baseMipLevel = 0,
-	    .levelCount = 1,
-	    .baseArrayLayer = 0,
-	    .layerCount = 1};
-
-	VkClearColorValue color = {.float32 = {1, 1, 1, 1}};
+	struct xrt_pose base_space_pose = XRT_POSE_IDENTITY;
 
 	for (uint32_t i = 0; i < 2; i++) {
-		vk_create_image_simple(
-		    &r->c->vk, 640, 800, VK_FORMAT_B8G8R8A8_SRGB,
-		    &r->dummy_images[i].memory, &r->dummy_images[i].image);
+		const struct xrt_fov fov = fovs[i];
+		const struct xrt_pose eye_pose = poses[i];
 
-		_set_image_layout(
-		    vk, cmd_buffer, r->dummy_images[i].image, 0,
-		    VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresource_range);
+		comp_layer_renderer_set_fov(r->lr, &fov, i);
 
-		vk->vkCmdClearColorImage(cmd_buffer, r->dummy_images[i].image,
-		                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                         &color, 1, &subresource_range);
+		struct xrt_space_relation result = {0};
+		struct xrt_relation_chain xrc = {0};
+		m_relation_chain_push_pose_if_not_identity(&xrc, &eye_pose);
+		m_relation_chain_push_relation(&xrc, &head_relation);
+		m_relation_chain_push_pose_if_not_identity(&xrc, &base_space_pose);
+		m_relation_chain_resolve(&xrc, &result);
 
-		vk_set_image_layout(vk, cmd_buffer, r->dummy_images[i].image,
-		                    VK_ACCESS_TRANSFER_WRITE_BIT,
-		                    VK_ACCESS_SHADER_READ_BIT,
-		                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		                    subresource_range);
-
-		vk_create_sampler(vk, &r->dummy_images[i].sampler);
-		vk_create_view(vk, r->dummy_images[i].image,
-		               VK_FORMAT_B8G8R8A8_SRGB, subresource_range,
-		               &r->dummy_images[i].views[0]);
+		comp_layer_renderer_set_pose(r->lr, &eye_pose, &result.pose, i);
 	}
-
-	_submit_cmd_buffer(r->c, vk->cmd_pool, cmd_buffer);
 }
 
 static void
-renderer_init(struct comp_renderer *r)
+renderer_acquire_swapchain_image(struct comp_renderer *r)
 {
-	struct vk_bundle *vk = &r->c->vk;
+	COMP_TRACE_MARKER();
 
-	vk->vkGetDeviceQueue(vk->device, r->c->vk.queue_family_index, 0,
-	                     &r->queue);
-	renderer_init_semaphores(r);
-	renderer_create_pipeline_cache(r);
-	renderer_create_render_pass(r);
+	uint32_t buffer_index = 0;
+	VkResult ret;
 
-	assert(r->c->window->swapchain.image_count > 0);
+	assert(r->acquired_buffer < 0);
 
-	renderer_create_frame_buffers(r, r->c->window->swapchain.image_count);
-	renderer_allocate_command_buffers(r,
-	                                  r->c->window->swapchain.image_count);
-
-	renderer_init_dummy_images(r);
-
-	renderer_init_descriptor_pool(r);
-
-	r->distortion = U_TYPED_CALLOC(struct comp_distortion);
-
-	comp_distortion_init(r->distortion, r->c, r->render_pass,
-	                     r->pipeline_cache, r->settings->distortion_model,
-	                     r->c->xdev->hmd, r->descriptor_pool,
-	                     r->settings->flip_y);
-
-	for (uint32_t i = 0; i < 2; i++)
-		comp_distortion_update_descriptor_set(
-		    r->distortion, r->dummy_images[i].sampler,
-		    r->dummy_images[i].views[0], i);
-
-	renderer_build_command_buffers(r);
-}
-
-static void
-renderer_set_swapchain_image(struct comp_renderer *r,
-                             uint32_t eye,
-                             struct comp_swapchain_image *image,
-                             uint32_t layer)
-{
-	if (eye > 1) {
-		COMP_ERROR(r->c, "Swapchain image %p %u not found",
-		           (void *)image, eye);
+	if (!renderer_ensure_images_and_renderings(r, false)) {
+		// Not ready yet.
 		return;
 	}
+	ret = comp_target_acquire(r->c->target, &buffer_index);
 
-	if (!r->one_buffer_imported[eye]) {
-		COMP_DEBUG(r->c,
-		           "Updating descriptor set for"
-		           " swapchain image %p and eye %u",
-		           (void *)image, eye);
-		comp_distortion_update_descriptor_set(
-		    r->distortion, image->sampler, image->views[layer],
-		    (uint32_t)eye);
-		renderer_rebuild_command_buffers(r);
-		r->one_buffer_imported[eye] = true;
-	}
-}
+	if ((ret == VK_ERROR_OUT_OF_DATE_KHR) || (ret == VK_SUBOPTIMAL_KHR)) {
+		COMP_DEBUG(r->c, "Received %s.", vk_result_string(ret));
 
-static void
-renderer_render(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
+		if (!renderer_ensure_images_and_renderings(r, true)) {
+			// Failed on force recreate.
+			COMP_ERROR(r->c,
+			           "renderer_acquire_swapchain_image: comp_target_acquire was out of date, force "
+			           "re-create image and renderings failed. Probably the target disappeared.");
+			return;
+		}
 
-	r->c->window->flush(r->c->window);
-	renderer_aquire_swapchain_image(r);
-	vk->vkDeviceWaitIdle(vk->device);
-	renderer_submit_queue(r);
-	renderer_present_swapchain_image(r);
-}
-
-static void
-renderer_create_frame_buffer(struct comp_renderer *r,
-                             VkFramebuffer *frame_buffer,
-                             uint32_t num_attachements,
-                             VkImageView *attachments)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	VkFramebufferCreateInfo frame_buffer_info = {
-	    .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .renderPass = r->render_pass,
-	    .attachmentCount = num_attachements,
-	    .pAttachments = attachments,
-	    .width = r->c->current.width,
-	    .height = r->c->current.height,
-	    .layers = 1,
-	};
-
-	ret = vk->vkCreateFramebuffer(vk->device, &frame_buffer_info, NULL,
-	                              frame_buffer);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateFramebuffer: %s",
-		           vk_result_string(ret));
-	}
-}
-
-static void
-renderer_allocate_command_buffers(struct comp_renderer *r, uint32_t count)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	if (count == 0) {
-		COMP_ERROR(r->c, "Requested 0 command buffers.");
-		return;
+		/* Acquire image again to silence validation error */
+		ret = comp_target_acquire(r->c->target, &buffer_index);
+		if (ret != VK_SUCCESS) {
+			COMP_ERROR(r->c, "comp_target_acquire: %s", vk_result_string(ret));
+		}
+	} else if (ret != VK_SUCCESS) {
+		COMP_ERROR(r->c, "comp_target_acquire: %s", vk_result_string(ret));
 	}
 
-	COMP_DEBUG(r->c, "Allocating %d Command Buffers.", count);
-
-	if (r->cmd_buffers != NULL)
-		free(r->cmd_buffers);
-
-	r->num_cmd_buffers = count;
-
-	r->cmd_buffers = U_TYPED_ARRAY_CALLOC(VkCommandBuffer, count);
-
-	VkCommandBufferAllocateInfo cmd_buffer_info = {
-	    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-	    .pNext = NULL,
-	    .commandPool = vk->cmd_pool,
-	    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-	    .commandBufferCount = count,
-	};
-
-	ret = vk->vkAllocateCommandBuffers(vk->device, &cmd_buffer_info,
-	                                   r->cmd_buffers);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateFramebuffer: %s",
-		           vk_result_string(ret));
-	}
-}
-
-static void
-renderer_destroy_command_buffers(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-
-	vk->vkFreeCommandBuffers(vk->device, vk->cmd_pool, r->num_cmd_buffers,
-	                         r->cmd_buffers);
-}
-
-static void
-renderer_create_pipeline_cache(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	VkPipelineCacheCreateInfo pipeline_cache_info = {
-	    .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .initialDataSize = 0,
-	    .pInitialData = NULL,
-	};
-	ret = vk->vkCreatePipelineCache(vk->device, &pipeline_cache_info, NULL,
-	                                &r->pipeline_cache);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreatePipelineCache: %s",
-		           vk_result_string(ret));
-	}
-}
-
-static void
-renderer_init_semaphores(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	VkSemaphoreCreateInfo info = {
-	    .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	};
-
-	ret = vk->vkCreateSemaphore(vk->device, &info, NULL,
-	                            &r->semaphores.present_complete);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateSemaphore: %s",
-		           vk_result_string(ret));
-	}
-
-	ret = vk->vkCreateSemaphore(vk->device, &info, NULL,
-	                            &r->semaphores.render_complete);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateSemaphore: %s",
-		           vk_result_string(ret));
-	}
+	r->acquired_buffer = buffer_index;
 }
 
 static void
 renderer_resize(struct comp_renderer *r)
 {
-	struct vk_bundle *vk = &r->c->vk;
-
-	vk->vkDeviceWaitIdle(vk->device);
-
-	vk_swapchain_create(&r->c->window->swapchain, r->c->current.width,
-	                    r->c->current.height, r->settings->color_format,
-	                    r->settings->color_space,
-	                    r->settings->present_mode);
-
-	for (uint32_t i = 0; i < r->num_frame_buffers; i++)
-		vk->vkDestroyFramebuffer(vk->device, r->frame_buffers[i], NULL);
-	renderer_create_frame_buffers(r, r->c->window->swapchain.image_count);
-
-	renderer_destroy_command_buffers(r);
-	renderer_allocate_command_buffers(r,
-	                                  r->c->window->swapchain.image_count);
-
-	renderer_build_command_buffers(r);
-	vk->vkDeviceWaitIdle(vk->device);
-}
-
-static void
-renderer_create_frame_buffers(struct comp_renderer *r, uint32_t count)
-{
-	r->num_frame_buffers = count;
-
-	if (r->frame_buffers != NULL)
-		free(r->frame_buffers);
-
-	r->frame_buffers = U_TYPED_ARRAY_CALLOC(VkFramebuffer, count);
-
-	for (uint32_t i = 0; i < count; i++) {
-		VkImageView attachments[1] = {
-		    r->c->window->swapchain.buffers[i].view,
-		};
-		renderer_create_frame_buffer(r, &r->frame_buffers[i],
-		                             ARRAY_SIZE(attachments),
-		                             attachments);
+	if (!comp_target_check_ready(r->c->target)) {
+		// Can't create images right now.
+		// Just close any existing renderings.
+		renderer_close_renderings_and_fences(r);
+		return;
 	}
+	// Force recreate.
+	renderer_ensure_images_and_renderings(r, true);
 }
 
 static void
-renderer_create_render_pass(struct comp_renderer *r)
+renderer_present_swapchain_image(struct comp_renderer *r, uint64_t desired_present_time_ns, uint64_t present_slop_ns)
 {
-	struct vk_bundle *vk = &r->c->vk;
+	COMP_TRACE_MARKER();
+
 	VkResult ret;
 
-	VkAttachmentDescription attachments[1] = {
-	    (VkAttachmentDescription){
-	        .flags = 0,
-	        .format = r->c->window->swapchain.surface_format.format,
-	        .samples = VK_SAMPLE_COUNT_1_BIT,
-	        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-	        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-	        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-	        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-	        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-	        .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-	    },
-	};
+	assert(r->c->frame.rendering.id >= 0);
+	uint64_t render_complete_signal_value = (uint64_t)r->c->frame.rendering.id;
 
-	VkAttachmentReference color_reference = {
-	    .attachment = 0,
-	    .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	};
+	ret = comp_target_present(        //
+	    r->c->target,                 //
+	    r->c->base.vk.queue,          //
+	    r->acquired_buffer,           //
+	    render_complete_signal_value, //
+	    desired_present_time_ns,      //
+	    present_slop_ns);             //
+	r->acquired_buffer = -1;
 
-	VkSubpassDescription subpass_description = {
-	    .flags = 0,
-	    .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-	    .inputAttachmentCount = 0,
-	    .pInputAttachments = NULL,
-	    .colorAttachmentCount = 1,
-	    .pColorAttachments = &color_reference,
-	    .pResolveAttachments = NULL,
-	    .pDepthStencilAttachment = NULL,
-	    .preserveAttachmentCount = 0,
-	    .pPreserveAttachments = NULL,
-	};
-
-	VkSubpassDependency dependencies[1] = {
-	    (VkSubpassDependency){
-	        .srcSubpass = VK_SUBPASS_EXTERNAL,
-	        .dstSubpass = 0,
-	        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-	        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-	        .srcAccessMask = 0,
-	        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-	                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-	        .dependencyFlags = 0,
-	    },
-	};
-
-	VkRenderPassCreateInfo render_pass_info = {
-	    .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-	    .pNext = NULL,
-	    .flags = 0,
-	    .attachmentCount = ARRAY_SIZE(attachments),
-	    .pAttachments = attachments,
-	    .subpassCount = 1,
-	    .pSubpasses = &subpass_description,
-	    .dependencyCount = ARRAY_SIZE(dependencies),
-	    .pDependencies = dependencies,
-	};
-
-	ret = vk->vkCreateRenderPass(vk->device, &render_pass_info, NULL,
-	                             &r->render_pass);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkCreateRenderPass: %s",
-		           vk_result_string(ret));
-	}
-}
-
-static void
-renderer_aquire_swapchain_image(struct comp_renderer *r)
-{
-	VkResult ret;
-
-	ret = vk_swapchain_acquire_next_image(&r->c->window->swapchain,
-	                                      r->semaphores.present_complete,
-	                                      &r->current_buffer);
-
-	if ((ret == VK_ERROR_OUT_OF_DATE_KHR) || (ret == VK_SUBOPTIMAL_KHR)) {
-		COMP_DEBUG(r->c, "Received %s.", vk_result_string(ret));
-		renderer_resize(r);
-		/* Acquire image again to silence validation error */
-		ret = vk_swapchain_acquire_next_image(
-		    &r->c->window->swapchain, r->semaphores.present_complete,
-		    &r->current_buffer);
-		if (ret != VK_SUCCESS) {
-			COMP_ERROR(r->c, "vk_swapchain_acquire_next_image: %s",
-			           vk_result_string(ret));
-		}
-	} else if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vk_swapchain_acquire_next_image: %s",
-		           vk_result_string(ret));
-	}
-}
-
-static void
-renderer_present_swapchain_image(struct comp_renderer *r)
-{
-	struct vk_bundle *vk = &r->c->vk;
-	VkResult ret;
-
-	ret = vk_swapchain_present(&r->c->window->swapchain, r->queue,
-	                           r->current_buffer,
-	                           r->semaphores.render_complete);
-	if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+	if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
 		renderer_resize(r);
 		return;
 	}
 	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vk_swapchain_present: %s",
-		           vk_result_string(ret));
-	}
-
-	ret = vk->vkQueueWaitIdle(r->queue);
-	if (ret != VK_SUCCESS) {
-		COMP_ERROR(r->c, "vkQueueWaitIdle: %s", vk_result_string(ret));
+		COMP_ERROR(r->c, "vk_swapchain_present: %s", vk_result_string(ret));
 	}
 }
 
 static void
 renderer_destroy(struct comp_renderer *r)
 {
-	struct vk_bundle *vk = &r->c->vk;
+	struct vk_bundle *vk = &r->c->base.vk;
 
-	// Distortion
-	if (r->distortion != NULL) {
-		comp_distortion_destroy(r->distortion);
-		r->distortion = NULL;
-	}
+	// Left eye readback
+	vk_image_readback_to_xf_pool_destroy(vk, &r->mirror_to_debug_gui.pool);
 
-	// Dummy images
-	for (uint32_t i = 0; i < 2; i++) {
-		comp_swapchain_image_cleanup(vk, 1, &r->dummy_images[i]);
-	}
-
-	// Discriptor pool
-	if (r->descriptor_pool != VK_NULL_HANDLE) {
-		vk->vkDestroyDescriptorPool(vk->device, r->descriptor_pool,
-		                            NULL);
-		r->descriptor_pool = VK_NULL_HANDLE;
-	}
+	u_sink_debug_destroy(&r->mirror_to_debug_gui.debug_sink);
 
 	// Command buffers
-	renderer_destroy_command_buffers(r);
-	if (r->cmd_buffers != NULL)
-		free(r->cmd_buffers);
-	r->num_cmd_buffers = 0;
+	renderer_close_renderings_and_fences(r);
 
-	// Render pass
-	if (r->render_pass != VK_NULL_HANDLE) {
-		vk->vkDestroyRenderPass(vk->device, r->render_pass, NULL);
-		r->render_pass = VK_NULL_HANDLE;
+	comp_layer_renderer_destroy(&(r->lr));
+
+	u_var_remove_root(r);
+	u_frame_times_widget_teardown(&r->mirror_to_debug_gui.push_frame_times);
+}
+
+static VkImageView
+get_image_view(const struct comp_swapchain_image *image, enum xrt_layer_composition_flags flags, uint32_t array_index)
+{
+	if (flags & XRT_LAYER_COMPOSITION_BLEND_TEXTURE_SOURCE_ALPHA_BIT) {
+		return image->views.alpha[array_index];
 	}
 
-	// Frame buffers
-	for (uint32_t i = 0; i < r->num_frame_buffers; i++) {
-		if (r->frame_buffers[i] != VK_NULL_HANDLE) {
-			vk->vkDestroyFramebuffer(vk->device,
-			                         r->frame_buffers[i], NULL);
-			r->frame_buffers[i] = VK_NULL_HANDLE;
+	return image->views.no_alpha[array_index];
+}
+
+static void
+do_gfx_mesh_and_proj(struct comp_renderer *r,
+                     struct render_gfx *rr,
+                     struct render_gfx_target_resources *rts,
+                     const struct comp_layer *layer,
+                     const struct xrt_layer_projection_view_data *lvd,
+                     const struct xrt_layer_projection_view_data *rvd)
+{
+	const struct xrt_layer_data *data = &layer->data;
+	const uint32_t left_array_index = lvd->sub.array_index;
+	const uint32_t right_array_index = rvd->sub.array_index;
+	const struct comp_swapchain_image *left = &layer->sc_array[0]->images[lvd->sub.image_index];
+	const struct comp_swapchain_image *right = &layer->sc_array[1]->images[rvd->sub.image_index];
+
+	struct xrt_normalized_rect src_norm_rects[2] = {lvd->sub.norm_rect, rvd->sub.norm_rect};
+	if (data->flip_y) {
+		src_norm_rects[0].h = -src_norm_rects[0].h;
+		src_norm_rects[0].y = 1 + src_norm_rects[0].y;
+		src_norm_rects[1].h = -src_norm_rects[1].h;
+		src_norm_rects[1].y = 1 + src_norm_rects[1].y;
+	}
+
+	VkSampler src_samplers[2] = {
+	    left->sampler,
+	    right->sampler,
+	};
+
+	VkImageView src_image_views[2] = {
+	    get_image_view(left, data->flags, left_array_index),
+	    get_image_view(right, data->flags, right_array_index),
+	};
+
+	renderer_build_rendering(r, rr, rts, src_samplers, src_image_views, src_norm_rects);
+}
+
+static void
+dispatch_graphics(struct comp_renderer *r, struct render_gfx *rr)
+{
+	COMP_TRACE_MARKER();
+
+	struct comp_compositor *c = r->c;
+	struct comp_target *ct = c->target;
+
+	struct render_gfx_target_resources *rtr = &r->rtr_array[r->acquired_buffer];
+	// We mark here to include the layer rendering in the GPU time.
+	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+	// COMP_SPEW(c, "Monado needs pose now ");
+	renderer_get_view_projection(r);			// xrgears doesn't work properly without this
+
+	// Composite non-quad layers:
+	// COMP_SPEW(c, "Layer renderer START %ld ms", illixr_get_now_ns()/1000000);
+
+	// For now, we let the layer renderer composite all of the layers together
+	comp_layer_renderer_draw(r->lr);
+
+	// Insert ILLIXR: calling timewarp here. But before that we need the render pose
+	struct xrt_pose render_pose;
+	for (uint32_t i = 0; i < r->lr->layer_count; i++){
+		struct comp_render_layer *layer = r->lr->layers[i];
+		if(layer->type == XRT_LAYER_STEREO_PROJECTION){
+			render_pose.orientation.x = -(layer->l_pose.orientation.x);
+			render_pose.orientation.y = -(layer->l_pose.orientation.y);
+			render_pose.orientation.z = -(layer->l_pose.orientation.z);
+			render_pose.orientation.w = -(layer->l_pose.orientation.w);
+			render_pose.position.x = (layer->l_pose.position.x + layer->r_pose.position.x)/2;
+			render_pose.position.y = (layer->l_pose.position.y + layer->r_pose.position.y)/2;
+			render_pose.position.z = (layer->l_pose.position.z + layer->r_pose.position.z)/2;
+			break;
 		}
 	}
-	if (r->frame_buffers != NULL)
-		free(r->frame_buffers);
-	r->frame_buffers = NULL;
-	r->num_frame_buffers = 0;
 
-	// Pipeline cache
-	if (r->pipeline_cache != VK_NULL_HANDLE) {
-		vk->vkDestroyPipelineCache(vk->device, r->pipeline_cache, NULL);
-		r->pipeline_cache = VK_NULL_HANDLE;
+	// COMP_SPEW(c, "Layer renderer calling ILLIXR at %ld ms", illixr_get_now_ns()/1000000);
+	illixr_write_frame(0, 0, render_pose);
+	
+	// COMP_SPEW(c, "Layer renderer FINISH at %ld ms", illixr_get_now_ns()/1000000);
+
+	VkSampler src_samplers[2] = {
+		    r->lr->illixr_images[0].sampler,
+		    r->lr->illixr_images[1].sampler,
+	};
+
+	VkImageView src_image_views[2] = {
+		r->lr->illixr_images[0].view,
+		r->lr->illixr_images[1].view,
+	};
+
+	struct xrt_normalized_rect src_norm_rects[2] = {
+		    {.x = 0, .y = 0, .w = 1, .h = 1},
+		    {.x = 0, .y = 0, .w = 1, .h = 1},
+	};
+
+	renderer_build_rendering(r, rr, rtr, src_samplers, src_image_views, src_norm_rects);
+
+	renderer_submit_queue(r, rr->r->cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+	return;
+}
+
+/*
+ *
+ * Compute
+ *
+ */
+
+static void
+get_view_poses(struct comp_renderer *r, struct xrt_pose out_world[2], struct xrt_pose out_eye[2])
+{
+	COMP_TRACE_MARKER();
+
+	struct xrt_space_relation head_relation = XRT_SPACE_RELATION_ZERO;
+	struct xrt_fov fovs[2] = {0};
+	struct xrt_pose poses[2] = {0};
+
+	struct xrt_vec3 default_eye_relation = {
+	    0.063000f, /*! @todo get actual ipd_meters */
+	    0.0f,
+	    0.0f,
+	};
+
+	xrt_device_get_view_poses(                           //
+	    r->c->xdev,                                      //
+	    &default_eye_relation,                           //
+	    r->c->frame.rendering.predicted_display_time_ns, //
+	    2,                                               //
+	    &head_relation,                                  //
+	    fovs,                                            //
+	    poses);                                          //
+
+	struct xrt_pose base_space_pose = XRT_POSE_IDENTITY;
+	for (uint32_t i = 0; i < 2; i++) {
+		const struct xrt_fov fov = fovs[i];
+		const struct xrt_pose eye_pose = poses[i];
+
+		comp_layer_renderer_set_fov(r->lr, &fov, i);
+
+		struct xrt_space_relation result = {0};
+		struct xrt_relation_chain xrc = {0};
+		m_relation_chain_push_pose_if_not_identity(&xrc, &eye_pose);
+		m_relation_chain_push_relation(&xrc, &head_relation);
+		m_relation_chain_push_pose_if_not_identity(&xrc, &base_space_pose);
+		m_relation_chain_resolve(&xrc, &result);
+
+		out_eye[i] = eye_pose;
+		out_world[i] = result.pose;
+	}
+}
+
+static void
+ensure_scratch_image(struct comp_renderer *r,
+                     struct render_viewport_data *out_l_viewport_data,
+                     struct render_viewport_data *out_r_viewport_data)
+{
+	struct xrt_view *l_v = &r->c->xdev->hmd->views[0];
+	struct xrt_view *r_v = &r->c->xdev->hmd->views[1];
+
+	uint32_t w = MAX(l_v->viewport.w_pixels, r_v->viewport.w_pixels);
+	uint32_t h = MAX(l_v->viewport.h_pixels, r_v->viewport.h_pixels);
+
+	// Adjust size to be bigger, 140%, to match default recommended viewport size.
+	//! @todo Make this match fully, or even match app provided layers.
+	w = (uint32_t)(w * 1.4f);
+	h = (uint32_t)(h * 1.4f);
+
+	struct render_viewport_data l_viewport_data = {
+	    .w = w,
+	    .h = h,
+	    .x = 0,
+	    .y = 0,
+	};
+
+	struct render_viewport_data r_viewport_data = {
+	    .w = w,
+	    .h = h,
+	    .x = w,
+	    .y = 0,
+	};
+
+	VkExtent2D extent = {w * 2, h};
+
+	if (!render_ensure_scratch_image(&r->c->nr, extent)) {
+		U_LOG_E("Failed to create scratch image!");
+		assert(false);
 	}
 
-	// Semaphores
-	if (r->semaphores.present_complete != VK_NULL_HANDLE) {
-		vk->vkDestroySemaphore(vk->device,
-		                       r->semaphores.present_complete, NULL);
-		r->semaphores.present_complete = VK_NULL_HANDLE;
+	*out_l_viewport_data = l_viewport_data;
+	*out_r_viewport_data = r_viewport_data;
+}
+
+static void
+do_layers(struct comp_renderer *r,
+          struct render_compute *crc,
+          const struct comp_layer *layers,
+          const uint32_t layer_count)
+{
+	struct render_viewport_data views[2];
+
+	// Create scratch image and get target views.
+	ensure_scratch_image(r, &views[0], &views[1]);
+
+	struct render_compute_layer_ubo_data *ubo_data =
+	    (struct render_compute_layer_ubo_data *)crc->r->compute.layer.ubo.mapped;
+
+	for (uint32_t i = 0; i < 2; i++) {
+		ubo_data->views[i] = views[i];
 	}
-	if (r->semaphores.render_complete != VK_NULL_HANDLE) {
-		vk->vkDestroySemaphore(vk->device,
-		                       r->semaphores.render_complete, NULL);
-		r->semaphores.render_complete = VK_NULL_HANDLE;
+
+	ubo_data->pre_transforms[0] = crc->r->distortion.uv_to_tanangle[0];
+	ubo_data->pre_transforms[1] = crc->r->distortion.uv_to_tanangle[1];
+
+	VkImage target_image = crc->r->scratch.color.image;
+	VkImageView target_image_view = crc->r->scratch.color.unorm_view; // Have to write in linear
+
+	struct xrt_pose world_poses[2], eye_poses[2];
+	get_view_poses(r, world_poses, eye_poses);
+
+	// Not the transform of the views, but the inverse: actual view matrices.
+	struct xrt_matrix_4x4 world_view_mats[2], eye_view_mats[2];
+	math_matrix_4x4_view_from_pose(&world_poses[0], &world_view_mats[0]);
+	math_matrix_4x4_view_from_pose(&world_poses[1], &world_view_mats[1]);
+	math_matrix_4x4_view_from_pose(&eye_poses[0], &eye_view_mats[0]);
+	math_matrix_4x4_view_from_pose(&eye_poses[1], &eye_view_mats[1]);
+
+	// Tightly pack color and optional depth images.
+	uint32_t cur_image = 0;
+	VkSampler src_samplers[COMP_MAX_IMAGES];
+	VkImageView src_image_views[COMP_MAX_IMAGES];
+
+	for (uint32_t layer_i = 0; layer_i < layer_count; layer_i++) {
+		const struct xrt_layer_data *data = &layers[layer_i].data;
+		const struct comp_layer *layer = &layers[layer_i];
+
+		ubo_data->layer_type[layer_i].val = data->type;
+		ubo_data->layer_type[layer_i].unpremultiplied =
+		    (data->flags & XRT_LAYER_COMPOSITION_UNPREMULTIPLIED_ALPHA_BIT) != 0;
+
+		// Base index into arrays that have a value per view & per layer.
+		uint32_t view_index_for_layer = layer_i * COMP_VIEWS_PER_LAYER;
+
+		//! Stop compositing layers if device's sampled image limit is reached.
+		//! This is necessary until composition can be split in multiple passes.
+		//! @todo: remove this after multi-pass composition is implemented.
+		uint32_t required_image_samplers;
+		switch (data->type) {
+		case XRT_LAYER_STEREO_PROJECTION: required_image_samplers = 2; break;
+		case XRT_LAYER_STEREO_PROJECTION_DEPTH: required_image_samplers = 4; break;
+		case XRT_LAYER_QUAD: required_image_samplers = 1; break;
+		default: required_image_samplers = 0;
+		}
+		//! Exit loop if shader cannot receive more image samplers
+		if (cur_image + required_image_samplers >
+		    crc->r->vk->features.max_per_stage_descriptor_sampled_images) {
+			for (uint32_t i = layer_i; i < layer_count; i++) {
+				ubo_data->layer_type[i].val = UINT32_MAX; //! @todo make this not needed.
+			}
+			break;
+		}
+
+
+		switch (data->type) {
+		case XRT_LAYER_STEREO_PROJECTION_DEPTH:
+		case XRT_LAYER_STEREO_PROJECTION: {
+			const struct xrt_layer_projection_view_data *lvd = NULL;
+			const struct xrt_layer_projection_view_data *rvd = NULL;
+			const struct xrt_layer_depth_data *l_dvd = NULL;
+			const struct xrt_layer_depth_data *r_dvd = NULL;
+
+			if (data->type == XRT_LAYER_STEREO_PROJECTION) {
+				const struct xrt_layer_stereo_projection_data *stereo = &layer->data.stereo;
+				lvd = &stereo->l;
+				rvd = &stereo->r;
+			} else {
+				const struct xrt_layer_stereo_projection_depth_data *stereo = &layer->data.stereo_depth;
+				lvd = &stereo->l;
+				rvd = &stereo->r;
+				l_dvd = &stereo->l_d;
+				r_dvd = &stereo->r_d;
+			}
+
+			uint32_t left_array_index = lvd->sub.array_index;
+			uint32_t right_array_index = rvd->sub.array_index;
+			const struct comp_swapchain_image *left = &layer->sc_array[0]->images[lvd->sub.image_index];
+			const struct comp_swapchain_image *right = &layer->sc_array[1]->images[rvd->sub.image_index];
+
+			// Left
+			src_samplers[cur_image] = left->sampler;
+			src_image_views[cur_image] = get_image_view(left, data->flags, left_array_index);
+			ubo_data->images_samplers[view_index_for_layer + 0].images[0] = cur_image++;
+
+			// Right
+			src_samplers[cur_image] = right->sampler;
+			src_image_views[cur_image] = get_image_view(right, data->flags, right_array_index);
+			ubo_data->images_samplers[view_index_for_layer + 1].images[0] = cur_image++;
+
+			// Depth
+			if (data->type == XRT_LAYER_STEREO_PROJECTION_DEPTH) {
+				uint32_t d_left_array_index = lvd->sub.array_index;
+				uint32_t d_right_array_index = rvd->sub.array_index;
+				const struct comp_swapchain_image *d_left =
+				    &layer->sc_array[2]->images[l_dvd->sub.image_index];
+				const struct comp_swapchain_image *d_right =
+				    &layer->sc_array[3]->images[r_dvd->sub.image_index];
+
+				// Depth left
+				src_samplers[cur_image] = d_left->sampler;
+				src_image_views[cur_image] = get_image_view(d_left, data->flags, d_left_array_index);
+				ubo_data->images_samplers[view_index_for_layer + 0].images[1] = cur_image++;
+
+				// Depth right
+				src_samplers[cur_image] = d_right->sampler;
+				src_image_views[cur_image] = get_image_view(d_right, data->flags, d_right_array_index);
+				ubo_data->images_samplers[view_index_for_layer + 1].images[1] = cur_image++;
+			}
+
+			struct xrt_normalized_rect *post_transforms = &ubo_data->post_transforms[view_index_for_layer];
+			post_transforms[0] = lvd->sub.norm_rect;
+			post_transforms[1] = rvd->sub.norm_rect;
+			if (data->flip_y) {
+				post_transforms[0].h = -post_transforms[0].h;
+				post_transforms[0].y = 1.0f + post_transforms[0].y;
+				post_transforms[1].h = -post_transforms[1].h;
+				post_transforms[1].y = 1.0f + post_transforms[1].y;
+			}
+
+			// unused if timewarp is off
+			if (!r->c->debug.atw_off) {
+				render_calc_time_warp_matrix(                         //
+				    &lvd->pose,                                       //
+				    &lvd->fov,                                        //
+				    &world_poses[0],                                  //
+				    &ubo_data->transforms[view_index_for_layer + 0]); //
+				render_calc_time_warp_matrix(                         //
+				    &rvd->pose,                                       //
+				    &rvd->fov,                                        //
+				    &world_poses[1],                                  //
+				    &ubo_data->transforms[view_index_for_layer + 1]); //
+			}
+
+		} break;
+		case XRT_LAYER_QUAD: {
+			const struct xrt_layer_quad_data *q = &layer->data.quad;
+			const struct comp_swapchain_image *image = &layer->sc_array[0]->images[q->sub.image_index];
+			uint32_t array_index = q->sub.array_index;
+
+			// Same image for both views
+			src_samplers[cur_image] = image->sampler;
+			src_image_views[cur_image] = get_image_view(image, layer->data.flags, array_index);
+			ubo_data->images_samplers[view_index_for_layer + 0].images[0] = cur_image;
+			ubo_data->images_samplers[view_index_for_layer + 1].images[0] = cur_image;
+			cur_image++;
+
+
+			struct xrt_normalized_rect *post_transforms = &ubo_data->post_transforms[view_index_for_layer];
+
+			// Same image for both views
+			post_transforms[0] = q->sub.norm_rect;
+			post_transforms[1] = q->sub.norm_rect;
+
+			// quad layers calculated in flipped space than projection layers.
+			// Note: different y flip logic compared to projection layers.
+			if (!data->flip_y) {
+				post_transforms[0].h = -post_transforms[0].h;
+				post_transforms[0].y = post_transforms[0].y - post_transforms[0].h;
+				post_transforms[1].h = -post_transforms[1].h;
+				post_transforms[1].y = post_transforms[1].y - post_transforms[1].h;
+			}
+
+			ubo_data->quad_extent[layer_i].val = data->quad.size;
+
+			// Is this layer viewspace or not.
+			const struct xrt_matrix_4x4 *view_mats =
+			    (layer->data.flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) ? eye_view_mats
+			                                                               : world_view_mats;
+
+			for (uint32_t view_i = 0; view_i < 2; view_i++) {
+				// transform quad pose into view space for each view
+				math_matrix_4x4_transform_vec3(
+				    &view_mats[view_i], &data->quad.pose.position,
+				    &ubo_data->quad_position[view_index_for_layer + view_i].val);
+
+				// neutral quad layer faces +z, towards the user
+				struct xrt_vec3 normal = (struct xrt_vec3){.x = 0, .y = 0, .z = 1};
+
+				// rotation of the quad normal in world space
+				struct xrt_quat rotation = data->quad.pose.orientation;
+				math_quat_rotate_vec3(&rotation, &normal, &normal);
+
+				/*
+				 * normal is a vector that originates on the plane, not on the origin.
+				 * Instead of using the inverse quad transform to transform it into view space we can
+				 * simply add up vectors:
+				 *
+				 * combined_normal [in world space] = plane_origin [in world space] + normal [in plane
+				 * space] [with plane in world space]
+				 *
+				 * Then combined_normal can be transformed to view space via view matrix and a new
+				 * normal_view_space retrieved:
+				 *
+				 * normal_view_space = combined_normal [in view space] - plane_origin [in view space]
+				 */
+				struct xrt_vec3 normal_view_space = normal;
+				math_vec3_accum(&data->quad.pose.position, &normal_view_space);
+				math_matrix_4x4_transform_vec3(&view_mats[view_i], &normal_view_space,
+				                               &normal_view_space);
+				math_vec3_subtract(&ubo_data->quad_position[view_index_for_layer + view_i].val,
+				                   &normal_view_space);
+				ubo_data->quad_normal[view_index_for_layer + view_i].val = normal_view_space;
+
+
+				struct xrt_vec3 scale = {1.f, 1.f, 1.f};
+				struct xrt_matrix_4x4 plane_transform_view_space;
+				math_matrix_4x4_model(&data->quad.pose, &scale, &plane_transform_view_space);
+				math_matrix_4x4_multiply(&view_mats[view_i], &plane_transform_view_space,
+				                         &plane_transform_view_space);
+				math_matrix_4x4_inverse(
+				    &plane_transform_view_space,
+				    &ubo_data->inverse_quad_transform[view_index_for_layer + view_i]);
+			}
+
+			// hide a quad layer by pointing its normal away from the camera in view space
+			struct xrt_vec3 hidden_normal = {.x = 0, .y = 0, .z = -1};
+			switch (q->visibility) {
+			case XRT_LAYER_EYE_VISIBILITY_NONE:
+				ubo_data->quad_normal[view_index_for_layer + 0].val = hidden_normal;
+				ubo_data->quad_normal[view_index_for_layer + 1].val = hidden_normal;
+				break;
+			case XRT_LAYER_EYE_VISIBILITY_LEFT_BIT:
+				ubo_data->quad_normal[view_index_for_layer + 1].val = hidden_normal;
+				break;
+			case XRT_LAYER_EYE_VISIBILITY_RIGHT_BIT:
+				ubo_data->quad_normal[view_index_for_layer + 0].val = hidden_normal;
+				break;
+			case XRT_LAYER_EYE_VISIBILITY_BOTH: break;
+			}
+
+		} break;
+		default:
+			COMP_ERROR(r->c, "Layer type %d not supported by compute shader, skipping", data->type);
+			ubo_data->layer_type[layer_i].val = UINT32_MAX;
+		}
 	}
+
+	for (uint32_t i = layer_count; i < COMP_MAX_LAYERS; i++) {
+		ubo_data->layer_type[i].val = UINT32_MAX;
+	}
+
+	//! @todo: If Vulkan 1.2, use VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT and skip this
+	while (cur_image < crc->r->compute.layer.image_array_size) {
+		src_samplers[cur_image] = crc->r->compute.default_sampler;
+		src_image_views[cur_image] = crc->r->mock.color.image_view;
+		cur_image++;
+	}
+
+	render_compute_layers(                        //
+	    crc,                                      //
+	    src_samplers,                             //
+	    src_image_views,                          //
+	    cur_image,                                //
+	    target_image,                             //
+	    target_image_view,                        //
+	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //
+	    !r->c->debug.atw_off);                    //
+}
+
+static void
+do_distortion(struct comp_renderer *r, struct render_compute *crc, const struct render_viewport_data views[2])
+{
+	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
+	VkImageView target_image_view = r->c->target->images[r->acquired_buffer].view;
+
+	VkImageView view = crc->r->scratch.color.srgb_view; // Read with gamma curve.
+	VkSampler sampler = crc->r->compute.default_sampler;
+
+	VkImageView src_image_views[2] = {view, view};
+	VkSampler src_samplers[2] = {sampler, sampler};
+
+	struct xrt_normalized_rect src_norm_rects[2] = {
+	    {
+	        // Left, takes up half the screen.
+	        .x = 0.0f,
+	        .y = 0.0f,
+	        .w = 0.5f,
+	        .h = 1.0f,
+	    },
+	    {
+	        // Right, takes up half the screen.
+	        .x = 0.5f,
+	        .y = 0.0f,
+	        .w = 0.5f,
+	        .h = 1.0f,
+	    },
+	};
+
+	render_compute_projection( //
+	    crc,                   //
+	    src_samplers,          //
+	    src_image_views,       //
+	    src_norm_rects,        //
+	    target_image,          //
+	    target_image_view,     //
+	    views                  //
+	);
+}
+
+static void
+do_projection_layers(struct comp_renderer *r,
+                     struct render_compute *crc,
+                     const struct comp_layer *layer,
+                     const struct xrt_layer_projection_view_data *lvd,
+                     const struct xrt_layer_projection_view_data *rvd)
+{
+	const struct xrt_layer_data *data = &layer->data;
+	uint32_t left_array_index = lvd->sub.array_index;
+	uint32_t right_array_index = rvd->sub.array_index;
+	const struct comp_swapchain_image *left = &layer->sc_array[0]->images[lvd->sub.image_index];
+	const struct comp_swapchain_image *right = &layer->sc_array[1]->images[rvd->sub.image_index];
+
+	struct render_viewport_data views[2];
+	calc_viewport_data(r, &views[0], &views[1]);
+
+	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
+	VkImageView target_image_view = r->c->target->images[r->acquired_buffer].view;
+
+	struct xrt_pose new_world_poses[2];
+	struct xrt_pose unused[2]; // New eye poses, unused.
+	get_view_poses(r, new_world_poses, unused);
+
+	VkSampler src_samplers[2] = {
+	    left->sampler,
+	    right->sampler,
+	};
+
+	VkImageView src_image_views[2] = {
+	    get_image_view(left, data->flags, left_array_index),
+	    get_image_view(right, data->flags, right_array_index),
+	};
+
+	struct xrt_normalized_rect src_norm_rects[2] = {lvd->sub.norm_rect, rvd->sub.norm_rect};
+	if (data->flip_y) {
+		src_norm_rects[0].h = -src_norm_rects[0].h;
+		src_norm_rects[0].y = 1 + src_norm_rects[0].y;
+		src_norm_rects[1].h = -src_norm_rects[1].h;
+		src_norm_rects[1].y = 1 + src_norm_rects[1].y;
+	}
+
+	struct xrt_pose src_poses[2] = {
+	    lvd->pose,
+	    rvd->pose,
+	};
+
+	struct xrt_fov src_fovs[2] = {
+	    lvd->fov,
+	    rvd->fov,
+	};
+
+	if (r->c->debug.atw_off) {
+		render_compute_projection( //
+		    crc,                   //
+		    src_samplers,          //
+		    src_image_views,       //
+		    src_norm_rects,        //
+		    target_image,          //
+		    target_image_view,     //
+		    views);                //
+	} else {
+		render_compute_projection_timewarp( //
+		    crc,                            //
+		    src_samplers,                   //
+		    src_image_views,                //
+		    src_norm_rects,                 //
+		    src_poses,                      //
+		    src_fovs,                       //
+		    new_world_poses,                //
+		    target_image,                   //
+		    target_image_view,              //
+		    views);                         //
+	}
+}
+
+static void
+dispatch_compute(struct comp_renderer *r, struct render_compute *crc)
+{
+	COMP_TRACE_MARKER();
+
+	struct comp_compositor *c = r->c;
+	struct comp_target *ct = c->target;
+
+	render_compute_init(crc, &c->nr);
+	render_compute_begin(crc);
+
+	struct render_viewport_data views[2];
+	calc_viewport_data(r, &views[0], &views[1]);
+
+	VkImage target_image = r->c->target->images[r->acquired_buffer].handle;
+	VkImageView target_image_view = r->c->target->images[r->acquired_buffer].view;
+
+	uint32_t layer_count = c->base.slot.layer_count;
+	if (layer_count == 1 && c->base.slot.layers[0].data.type == XRT_LAYER_STEREO_PROJECTION) {
+		int i = 0;
+		const struct comp_layer *layer = &c->base.slot.layers[i];
+		const struct xrt_layer_stereo_projection_data *stereo = &layer->data.stereo;
+		const struct xrt_layer_projection_view_data *lvd = &stereo->l;
+		const struct xrt_layer_projection_view_data *rvd = &stereo->r;
+
+		do_projection_layers(r, crc, layer, lvd, rvd);
+	} else if (layer_count == 1 && c->base.slot.layers[0].data.type == XRT_LAYER_STEREO_PROJECTION_DEPTH) {
+		int i = 0;
+		const struct comp_layer *layer = &c->base.slot.layers[i];
+		const struct xrt_layer_stereo_projection_depth_data *stereo = &layer->data.stereo_depth;
+		const struct xrt_layer_projection_view_data *lvd = &stereo->l;
+		const struct xrt_layer_projection_view_data *rvd = &stereo->r;
+
+		do_projection_layers(r, crc, layer, lvd, rvd);
+	} else if (layer_count > 0) {
+		do_layers(r, crc, c->base.slot.layers, layer_count);
+
+		do_distortion(r, crc, views);
+	} else {
+		render_compute_clear(  //
+		    crc,               //
+		    target_image,      //
+		    target_image_view, //
+		    views);            //
+	}
+
+	render_compute_end(crc);
+
+	comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+
+	renderer_submit_queue(r, crc->r->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+}
+
+
+/*
+ *
+ * Interface functions.
+ *
+ */
+
+void
+comp_renderer_set_quad_layer(struct comp_renderer *r,
+                             uint32_t layer,
+                             struct comp_swapchain_image *image,
+                             struct xrt_layer_data *data)
+{
+	struct comp_render_layer *l = r->lr->layers[layer];
+
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	comp_layer_update_descriptors(l, image->sampler,
+	                              get_image_view(image, data->flags, data->quad.sub.array_index));
+
+	struct xrt_vec3 s = {data->quad.size.x, data->quad.size.y, 1.0f};
+	struct xrt_matrix_4x4 model_matrix;
+	math_matrix_4x4_model(&data->quad.pose, &s, &model_matrix);
+
+	comp_layer_set_model_matrix(r->lr->layers[layer], &model_matrix);
+
+	comp_layer_set_flip_y(r->lr->layers[layer], data->flip_y);
+
+	l->type = XRT_LAYER_QUAD;
+	l->visibility = data->quad.visibility;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+
+	for (uint32_t i = 0; i < 2; i++) {
+		l->transformation[i].offset = data->quad.sub.rect.offset;
+		l->transformation[i].extent = data->quad.sub.rect.extent;
+	}
+}
+
+void
+comp_renderer_set_cylinder_layer(struct comp_renderer *r,
+                                 uint32_t layer,
+                                 struct comp_swapchain_image *image,
+                                 struct xrt_layer_data *data)
+{
+	struct comp_render_layer *l = r->lr->layers[layer];
+
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	l->type = XRT_LAYER_CYLINDER;
+	l->visibility = data->cylinder.visibility;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+
+	// skip "infinite cylinder"
+	if (data->cylinder.radius == 0.f || data->cylinder.aspect_ratio == INFINITY) {
+		/* skipping the descriptor set update means the renderer must
+		 * entirely skip rendering of invisible layer */
+		l->visibility = XRT_LAYER_EYE_VISIBILITY_NONE;
+		return;
+	}
+
+	comp_layer_update_descriptors(r->lr->layers[layer], image->sampler,
+	                              get_image_view(image, data->flags, data->cylinder.sub.array_index));
+
+
+	float height = (data->cylinder.radius * data->cylinder.central_angle) / data->cylinder.aspect_ratio;
+
+	// scale unit cylinder to diameter
+	float diameter = data->cylinder.radius * 2;
+	struct xrt_vec3 scale = {diameter, height, diameter};
+	struct xrt_matrix_4x4 model_matrix;
+	math_matrix_4x4_model(&data->cylinder.pose, &scale, &model_matrix);
+
+	comp_layer_set_model_matrix(r->lr->layers[layer], &model_matrix);
+
+	comp_layer_set_flip_y(r->lr->layers[layer], data->flip_y);
+
+	for (uint32_t i = 0; i < 2; i++) {
+		l->transformation[i].offset = data->cylinder.sub.rect.offset;
+		l->transformation[i].extent = data->cylinder.sub.rect.extent;
+	}
+
+	comp_layer_update_cylinder_vertex_buffer(l, data->cylinder.central_angle);
+}
+
+void
+comp_renderer_set_projection_layer(struct comp_renderer *r,
+                                   uint32_t layer,
+                                   struct comp_swapchain_image *left_image,
+                                   struct comp_swapchain_image *right_image,
+                                   struct xrt_layer_data *data)
+{
+	uint32_t left_array_index = data->stereo.l.sub.array_index;
+	uint32_t right_array_index = data->stereo.r.sub.array_index;
+
+	struct comp_render_layer *l = r->lr->layers[layer];
+
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	comp_layer_update_stereo_descriptors(l, left_image->sampler, right_image->sampler,
+	                                     get_image_view(left_image, data->flags, left_array_index),
+	                                     get_image_view(right_image, data->flags, right_array_index));
+
+	comp_layer_set_flip_y(l, data->flip_y);
+
+	l->type = XRT_LAYER_STEREO_PROJECTION;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+
+	l->transformation[0].offset = data->stereo.l.sub.rect.offset;
+	l->transformation[0].extent = data->stereo.l.sub.rect.extent;
+	l->transformation[1].offset = data->stereo.r.sub.rect.offset;
+	l->transformation[1].extent = data->stereo.r.sub.rect.extent;
+	l->l_pose = data->stereo.l.pose;
+	l->r_pose = data->stereo.r.pose;
+}
+
+#ifdef XRT_FEATURE_OPENXR_LAYER_EQUIRECT1
+void
+comp_renderer_set_equirect1_layer(struct comp_renderer *r,
+                                  uint32_t layer,
+                                  struct comp_swapchain_image *image,
+                                  struct xrt_layer_data *data)
+{
+
+	struct xrt_vec3 s = {1.0f, 1.0f, 1.0f};
+	struct xrt_matrix_4x4 model_matrix;
+	math_matrix_4x4_model(&data->equirect1.pose, &s, &model_matrix);
+
+	comp_layer_set_flip_y(r->lr->layers[layer], data->flip_y);
+
+	struct comp_render_layer *l = r->lr->layers[layer];
+	l->type = XRT_LAYER_EQUIRECT1;
+	l->visibility = data->equirect1.visibility;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	comp_layer_update_descriptors(l, image->repeat_sampler,
+	                              get_image_view(image, data->flags, data->equirect1.sub.array_index));
+
+	comp_layer_update_equirect1_descriptor(l, &data->equirect1);
+
+	for (uint32_t i = 0; i < 2; i++) {
+		l->transformation[i].offset = data->equirect1.sub.rect.offset;
+		l->transformation[i].extent = data->equirect1.sub.rect.extent;
+	}
+}
+#endif
+
+#ifdef XRT_FEATURE_OPENXR_LAYER_EQUIRECT2
+void
+comp_renderer_set_equirect2_layer(struct comp_renderer *r,
+                                  uint32_t layer,
+                                  struct comp_swapchain_image *image,
+                                  struct xrt_layer_data *data)
+{
+
+	struct xrt_vec3 s = {1.0f, 1.0f, 1.0f};
+	struct xrt_matrix_4x4 model_matrix;
+	math_matrix_4x4_model(&data->equirect2.pose, &s, &model_matrix);
+
+	comp_layer_set_flip_y(r->lr->layers[layer], data->flip_y);
+
+	struct comp_render_layer *l = r->lr->layers[layer];
+	l->type = XRT_LAYER_EQUIRECT2;
+	l->visibility = data->equirect2.visibility;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	comp_layer_update_descriptors(l, image->repeat_sampler,
+	                              get_image_view(image, data->flags, data->equirect2.sub.array_index));
+
+	comp_layer_update_equirect2_descriptor(l, &data->equirect2);
+
+	for (uint32_t i = 0; i < 2; i++) {
+		l->transformation[i].offset = data->equirect2.sub.rect.offset;
+		l->transformation[i].extent = data->equirect2.sub.rect.extent;
+	}
+}
+#endif
+
+#ifdef XRT_FEATURE_OPENXR_LAYER_CUBE
+void
+comp_renderer_set_cube_layer(struct comp_renderer *r,
+                             uint32_t layer,
+                             struct comp_swapchain_image *image,
+                             struct xrt_layer_data *data)
+{
+
+	struct xrt_vec3 s = {1.0f, 1.0f, 1.0f};
+	struct xrt_matrix_4x4 model_matrix;
+	math_matrix_4x4_model(&data->cube.pose, &s, &model_matrix);
+
+	comp_layer_set_flip_y(r->lr->layers[layer], data->flip_y);
+
+	struct comp_render_layer *l = r->lr->layers[layer];
+	l->type = XRT_LAYER_CUBE;
+	l->visibility = data->cube.visibility;
+	l->flags = data->flags;
+	l->view_space = (data->flags & XRT_LAYER_COMPOSITION_VIEW_SPACE_BIT) != 0;
+	l->transformation_ubo_binding = r->lr->transformation_ubo_binding;
+	l->texture_binding = r->lr->texture_binding;
+
+	comp_layer_update_descriptors(l, image->repeat_sampler,
+	                              get_image_view(image, data->flags, data->cube.sub.array_index));
+}
+#endif
+
+static void
+mirror_to_debug_gui_fixup_ui_state(struct comp_renderer *r)
+{
+	// One out of every zero frames is not what we want!
+	// Also one out of every negative two frames, etc. is nonsensical
+	if (r->mirror_to_debug_gui.push_every_frame_out_of_X < 1) {
+		r->mirror_to_debug_gui.push_every_frame_out_of_X = 1;
+	}
+
+	r->mirror_to_debug_gui.target_frame_time_ms = (float)r->mirror_to_debug_gui.push_every_frame_out_of_X *
+	                                              (float)time_ns_to_ms_f(r->c->settings.nominal_frame_interval_ns);
+
+	r->mirror_to_debug_gui.push_frame_times.debug_var->reference_timing =
+	    r->mirror_to_debug_gui.target_frame_time_ms;
+	r->mirror_to_debug_gui.push_frame_times.debug_var->range = r->mirror_to_debug_gui.target_frame_time_ms;
+}
+
+static bool
+can_mirror_to_debug_gui(struct comp_renderer *r)
+{
+	if (!r->c->mirroring_to_debug_gui || !u_sink_debug_is_active(&r->mirror_to_debug_gui.debug_sink)) {
+		return false;
+	}
+
+	uint64_t now = r->c->frame.rendering.predicted_display_time_ns;
+
+	double diff_s = (double)(now - r->mirror_to_debug_gui.last_push_ts_ns) / (double)U_TIME_1MS_IN_NS;
+
+	// Completely unscientific - lower values probably works fine too.
+	// I figure we don't have very many 500Hz displays and this woorks great for 120-144hz
+	double slop_ms = 2;
+
+	if (diff_s < r->mirror_to_debug_gui.target_frame_time_ms - slop_ms) {
+		return false;
+	}
+	r->mirror_to_debug_gui.last_push_ts_ns = now;
+	return true;
+}
+
+static void
+mirror_to_debug_gui_do_blit(struct comp_renderer *r)
+{
+	struct vk_bundle *vk = &r->c->base.vk;
+	VkResult ret;
+
+	struct vk_image_readback_to_xf *wrap = NULL;
+
+	if (!vk_image_readback_to_xf_pool_get_unused_frame(vk, r->mirror_to_debug_gui.pool, &wrap)) {
+		return;
+	}
+
+	VkCommandBuffer cmd;
+	vk_cmd_buffer_create_and_begin(vk, &cmd);
+
+	// For submitting commands.
+	os_mutex_lock(&vk->cmd_pool_mutex);
+
+	VkImage copy_from = r->lr->framebuffers[0].image;
+
+	VkImageSubresourceRange first_color_level_subresource_range = {
+	    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+	    .baseMipLevel = 0,
+	    .levelCount = 1,
+	    .baseArrayLayer = 0,
+	    .layerCount = 1,
+	};
+
+	// Barrier to make destination a destination
+	vk_cmd_image_barrier_locked(              //
+	    vk,                                   // vk_bundle
+	    cmd,                                  // cmdbuffer
+	    wrap->image,                          // image
+	    VK_ACCESS_HOST_READ_BIT,              // srcAccessMask
+	    VK_ACCESS_TRANSFER_WRITE_BIT,         // dstAccessMask
+	    wrap->layout,                         // oldImageLayout
+	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // newImageLayout
+	    VK_PIPELINE_STAGE_HOST_BIT,           // srcStageMask
+	    VK_PIPELINE_STAGE_TRANSFER_BIT,       // dstStageMask
+	    first_color_level_subresource_range); // subresourceRange
+
+	// Barrier to make source a source
+	vk_cmd_image_barrier_locked(                  //
+	    vk,                                       // vk_bundle
+	    cmd,                                      // cmdbuffer
+	    copy_from,                                // image
+	    VK_ACCESS_SHADER_WRITE_BIT,               // srcAccessMask
+	    VK_ACCESS_TRANSFER_READ_BIT,              // dstAccessMask
+	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // oldImageLayout
+	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,     // newImageLayout
+	    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,     // srcStageMask
+	    VK_PIPELINE_STAGE_TRANSFER_BIT,           // dstStageMask
+	    first_color_level_subresource_range);     // subresourceRange
+
+
+	VkImageBlit blit = {0};
+	blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blit.srcSubresource.layerCount = 1;
+
+	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blit.dstSubresource.layerCount = 1;
+
+	blit.srcOffsets[1].x = r->lr->extent.width;
+	blit.srcOffsets[1].y = r->lr->extent.height;
+	blit.srcOffsets[1].z = 1;
+
+
+	blit.dstOffsets[1].x = r->mirror_to_debug_gui.image_extent.width;
+	blit.dstOffsets[1].y = r->mirror_to_debug_gui.image_extent.height;
+	blit.dstOffsets[1].z = 1;
+
+	vk->vkCmdBlitImage(                       //
+	    cmd,                                  // commandBuffer
+	    copy_from,                            // srcImage
+	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, // srcImageLayout
+	    wrap->image,                          // dstImage
+	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // dstImageLayout
+	    1,                                    // regionCount
+	    &blit,                                // pRegions
+	    VK_FILTER_LINEAR                      // filter
+	);
+
+	wrap->layout = VK_IMAGE_LAYOUT_GENERAL;
+
+	// Reset destination
+	vk_cmd_image_barrier_locked(              //
+	    vk,                                   // vk_bundle
+	    cmd,                                  // cmdbuffer
+	    wrap->image,                          // image
+	    VK_ACCESS_TRANSFER_WRITE_BIT,         // srcAccessMask
+	    VK_ACCESS_HOST_READ_BIT,              // dstAccessMask
+	    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // oldImageLayout
+	    wrap->layout,                         // newImageLayout
+	    VK_PIPELINE_STAGE_TRANSFER_BIT,       // srcStageMask
+	    VK_PIPELINE_STAGE_HOST_BIT,           // dstStageMask
+	    first_color_level_subresource_range); // subresourceRange
+
+	// Reset src
+	vk_cmd_image_barrier_locked(                  //
+	    vk,                                       // vk_bundle
+	    cmd,                                      // cmdbuffer
+	    copy_from,                                // image
+	    VK_ACCESS_TRANSFER_READ_BIT,              // srcAccessMask
+	    VK_ACCESS_SHADER_WRITE_BIT,               // dstAccessMask
+	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,     // oldImageLayout
+	    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // newImageLayout
+	    VK_PIPELINE_STAGE_TRANSFER_BIT,           // srcStageMask
+	    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,     // dstStageMask
+	    first_color_level_subresource_range);     // subresourceRange
+
+	// Done submitting commands.
+	os_mutex_unlock(&vk->cmd_pool_mutex);
+
+	// Waits for command to finish.
+	ret = vk_cmd_buffer_submit(vk, cmd);
+	if (ret != VK_SUCCESS) {
+		//! @todo Better handling of error?
+		COMP_ERROR(r->c, "Failed to mirror image");
+	}
+
+	wrap->base_frame.source_timestamp = wrap->base_frame.timestamp =
+	    r->c->frame.rendering.predicted_display_time_ns;
+	wrap->base_frame.source_id = r->mirror_to_debug_gui.sequence++;
+
+
+	struct xrt_frame *frame = &wrap->base_frame;
+	wrap = NULL;
+	u_sink_debug_push_frame(&r->mirror_to_debug_gui.debug_sink, frame);
+	u_frame_times_widget_push_sample(&r->mirror_to_debug_gui.push_frame_times,
+	                                 r->c->frame.rendering.predicted_display_time_ns);
+
+	xrt_frame_reference(&frame, NULL);
+}
+
+void
+comp_renderer_draw(struct comp_renderer *r)
+{
+	COMP_TRACE_MARKER();
+
+	struct comp_target *ct = r->c->target;
+	struct comp_compositor *c = r->c;
+	struct render_gfx rr = {0};
+
+	assert(c->frame.rendering.id == -1);
+
+	c->frame.rendering = c->frame.waited;
+	c->frame.waited.id = -1;
+
+	comp_target_mark_begin(ct, c->frame.rendering.id, os_monotonic_get_ns());
+
+	// Are we ready to render? No - skip rendering.
+	if (!comp_target_check_ready(r->c->target)) {
+		// Need to emulate rendering for the timing.
+		//! @todo This should be discard.
+		comp_target_mark_submit(ct, c->frame.rendering.id, os_monotonic_get_ns());
+		return;
+	}
+
+	comp_target_flush(ct);
+
+	comp_target_update_timings(ct);
+
+	if (r->acquired_buffer < 0) {
+		// Ensures that renderings are created.
+		renderer_acquire_swapchain_image(r);
+	}
+
+	comp_target_update_timings(ct);
+
+	dispatch_graphics(r, &rr);
+
+#ifdef XRT_FEATURE_WINDOW_PEEK
+	if (c->peek) {
+		switch (c->peek->eye) {
+		case COMP_WINDOW_PEEK_EYE_LEFT:
+			comp_window_peek_blit(c->peek, r->lr->framebuffers[0].image, r->lr->extent.width,
+			                      r->lr->extent.height);
+			break;
+		case COMP_WINDOW_PEEK_EYE_RIGHT:
+			comp_window_peek_blit(c->peek, r->lr->framebuffers[1].image, r->lr->extent.width,
+			                      r->lr->extent.height);
+			break;
+		case COMP_WINDOW_PEEK_EYE_BOTH:
+			/* TODO: display the undistorted image */
+			comp_window_peek_blit(c->peek, c->target->images[r->acquired_buffer].handle, c->target->width,
+			                      c->target->height);
+			break;
+		}
+	}
+#endif
+
+	// Monado presents the frame here, but we want to control when it presents.
+	renderer_present_swapchain_image(r, c->frame.rendering.desired_present_time_ns, c->frame.rendering.present_slop_ns);
+
+	assert(r->c->frame.rendering.id >= 0);
+	uint64_t render_complete_signal_value = (uint64_t)r->c->frame.rendering.id;
+
+	// VkResult ret = comp_target_present(        //
+	//     r->c->target,                 //
+	//     r->c->base.vk.queue,          //
+	//     r->acquired_buffer,           //
+	//     render_complete_signal_value, //
+	//     c->frame.rendering.desired_present_time_ns,      //
+	//     c->frame.rendering.present_slop_ns);             //
+	// r->acquired_buffer = -1;
+
+	// if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+	// 	renderer_resize(r);
+	// 	return;
+	// }
+	// if (ret != VK_SUCCESS) {
+	// 	COMP_ERROR(r->c, "vk_swapchain_present: %s", vk_result_string(ret));
+	// }
+	
+	// Save for timestamps below.
+	uint64_t frame_id = c->frame.rendering.id;
+
+	// Clear the frame.
+	c->frame.rendering.id = -1;
+
+	mirror_to_debug_gui_fixup_ui_state(r);
+	if (can_mirror_to_debug_gui(r)) {
+		mirror_to_debug_gui_do_blit(r);
+	}
+
+	/*
+	 * This fixes a lot of validation issues as it makes sure that the
+	 * command buffer has completed and all resources referred by it can
+	 * now be manipulated.
+	 *
+	 * This is done after a swap so isn't time critical.
+	 */
+	renderer_wait_gpu_idle(r);
+
+
+	/*
+	 * Get timestamps of GPU work (if available).
+	 */
+
+	uint64_t gpu_start_ns, gpu_end_ns;
+	if (render_resources_get_timestamps(&c->nr, &gpu_start_ns, &gpu_end_ns)) {
+		uint64_t now_ns = os_monotonic_get_ns();
+		comp_target_info_gpu(ct, frame_id, gpu_start_ns, gpu_end_ns, now_ns);
+	}
+
+
+	/*
+	 * Free resources.
+	 */
+	render_gfx_close(&rr);
+
+
+	/*
+	 * For direct mode this makes us wait until the last frame has been
+	 * actually shown to the user, this avoids us missing that we have
+	 * missed a frame and miss-predicting the next frame.
+	 */
+	renderer_acquire_swapchain_image(r);
+
+	comp_target_update_timings(ct);
+
+}
+
+void
+comp_renderer_allocate_layers(struct comp_renderer *self, uint32_t layer_count)
+{
+	COMP_TRACE_MARKER();
+
+	comp_layer_renderer_allocate_layers(self->lr, layer_count);
+}
+
+void
+comp_renderer_destroy_layers(struct comp_renderer *self)
+{
+	COMP_TRACE_MARKER();
+
+	comp_layer_renderer_destroy_layers(self->lr);
+}
+
+struct comp_renderer *
+comp_renderer_create(struct comp_compositor *c)
+{
+	struct comp_renderer *r = U_TYPED_CALLOC(struct comp_renderer);
+
+	renderer_create(r, c);
+
+	return r;
+}
+
+void
+comp_renderer_destroy(struct comp_renderer **ptr_r)
+{
+	if (ptr_r == NULL) {
+		return;
+	}
+
+	struct comp_renderer *r = *ptr_r;
+	if (r == NULL) {
+		return;
+	}
+
+	renderer_destroy(r);
+	free(r);
+	*ptr_r = NULL;
+}
+
+void
+comp_renderer_add_debug_vars(struct comp_renderer *self)
+{
+	struct comp_renderer *r = self;
+	r->mirror_to_debug_gui.push_every_frame_out_of_X = 2;
+
+	u_frame_times_widget_init(&r->mirror_to_debug_gui.push_frame_times, 0.f, 0.f);
+	mirror_to_debug_gui_fixup_ui_state(r);
+
+	u_var_add_root(r, "Readback", true);
+
+	u_var_add_bool(r, &r->c->mirroring_to_debug_gui, "Readback left eye to debug GUI");
+	u_var_add_i32(r, &r->mirror_to_debug_gui.push_every_frame_out_of_X, "Push 1 frame out of every X frames");
+
+	u_var_add_ro_f32(r, &r->mirror_to_debug_gui.push_frame_times.fps, "FPS (Readback)");
+	u_var_add_f32_timing(r, r->mirror_to_debug_gui.push_frame_times.debug_var, "Frame Times (Readback)");
+
+
+	u_var_add_sink_debug(r, &r->mirror_to_debug_gui.debug_sink, "Left view!");
 }

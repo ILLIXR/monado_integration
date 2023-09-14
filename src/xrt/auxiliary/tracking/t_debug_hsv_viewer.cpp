@@ -23,7 +23,12 @@
 
 #define HSV_WIN "HSV Filter Tester"
 
-class DebugHSV
+/*!
+ * An @ref xrt_frame_sink related to debug viewing of HSV.
+ * @implements xrt_frame_sink
+ * @implements xrt_frame_node
+ */
+class DebugHSVViewer
 {
 public:
 	struct xrt_frame_sink base = {};
@@ -49,12 +54,7 @@ public:
  */
 
 static void
-process_pixel(bool f1,
-              bool f1_diff,
-              uint8_t *hsv_cap,
-              uint8_t *hsv_opt,
-              uint8_t *hsv_diff,
-              const uint8_t *rgb)
+process_pixel(bool f1, bool f1_diff, uint8_t *hsv_cap, uint8_t *hsv_opt, uint8_t *hsv_diff, const uint8_t *rgb)
 {
 	if (f1) {
 		hsv_cap[0] = rgb[2];
@@ -95,7 +95,7 @@ process_pixel(bool f1,
 #define NUM_CHAN 4
 
 static void
-process_frame(DebugHSV &d, struct xrt_frame *xf)
+process_frame(DebugHSVViewer &d, struct xrt_frame *xf)
 {
 	uint32_t width = SIZE * 3;
 	uint32_t height = SIZE * NUM_CHAN;
@@ -107,11 +107,9 @@ process_frame(DebugHSV &d, struct xrt_frame *xf)
 
 	for (uint32_t yp = 0; yp < SIZE; yp++) {
 		for (int chan = 0; chan < NUM_CHAN; chan++) {
-			auto hsv_cap = bgr.ptr<uint8_t>(yp + SIZE * chan);
-			auto hsv_opt =
-			    bgr.ptr<uint8_t>(yp + SIZE * chan) + 256 * 3;
-			auto hsv_diff =
-			    bgr.ptr<uint8_t>(yp + SIZE * chan) + 512 * 3;
+			auto *hsv_cap = bgr.ptr<uint8_t>(yp + SIZE * chan);
+			auto *hsv_opt = bgr.ptr<uint8_t>(yp + SIZE * chan) + 256 * 3;
+			auto *hsv_diff = bgr.ptr<uint8_t>(yp + SIZE * chan) + 512 * 3;
 			int mask = 1 << chan;
 
 			for (uint32_t xp = 0; xp < SIZE; xp++) {
@@ -121,14 +119,12 @@ process_frame(DebugHSV &d, struct xrt_frame *xf)
 
 				uint8_t *rgb = d.yuv_to_rgb_table.v[y][u][v];
 				uint8_t large = d.hsv_large.v[y][u][v];
-				uint8_t opt =
-				    t_hsv_filter_sample(&d.hsv_opt, y, u, v);
+				uint8_t opt = t_hsv_filter_sample(&d.hsv_opt, y, u, v);
 
 				large = (large & mask) != 0;
 				opt = (opt & mask) != 0;
 
-				process_pixel(large, opt, hsv_cap, hsv_opt,
-				              hsv_diff, rgb);
+				process_pixel(large, opt, hsv_cap, hsv_opt, hsv_diff, rgb);
 
 				hsv_cap += 3;
 				hsv_opt += 3;
@@ -150,7 +146,7 @@ process_frame(DebugHSV &d, struct xrt_frame *xf)
 extern "C" void
 t_debug_hsv_viewer_frame(struct xrt_frame_sink *xsink, struct xrt_frame *xf)
 {
-	auto &d = *(class DebugHSV *)xsink;
+	auto &d = *(class DebugHSVViewer *)xsink;
 
 	process_frame(d, xf);
 
@@ -164,7 +160,7 @@ t_debug_hsv_viewer_break_apart(struct xrt_frame_node *node)
 extern "C" void
 t_debug_hsv_viewer_destroy(struct xrt_frame_node *node)
 {
-	auto d = container_of(node, DebugHSV, node);
+	auto *d = container_of(node, DebugHSVViewer, node);
 	delete d;
 }
 
@@ -173,7 +169,7 @@ t_debug_hsv_viewer_create(struct xrt_frame_context *xfctx,
                           struct xrt_frame_sink *passthrough,
                           struct xrt_frame_sink **out_sink)
 {
-	auto &d = *(new DebugHSV());
+	auto &d = *(new DebugHSVViewer());
 
 	cv::namedWindow(HSV_WIN);
 

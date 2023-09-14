@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2019, Collabora, Ltd.
+# Copyright 2019-2021, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 # Author: Ryan Pavlik <ryan.pavlik@collabora.com>
 
@@ -8,7 +8,7 @@
 set -e
 
 if [ ! "${CLANGFORMAT}" ]; then
-        for fn in clang-format-9 clang-format-8 clang-format-7 clang-format-6.0 clang-format; do
+        for fn in clang-format-11 clang-format-10 clang-format-9 clang-format-8 clang-format-7 clang-format-6.0 clang-format; do
                 if command -v $fn > /dev/null; then
                         CLANGFORMAT=$fn
                         break
@@ -22,14 +22,20 @@ if [ ! "${CLANGFORMAT}" ]; then
 fi
 
 (
+        ${CLANGFORMAT} --version
+
         cd $(dirname $0)/..
+
         find \
                 src/xrt/auxiliary \
                 src/xrt/compositor \
                 src/xrt/drivers \
                 src/xrt/include \
+                src/xrt/ipc \
                 src/xrt/state_trackers \
                 src/xrt/targets \
+                src/xrt/tracking \
+                tests \
                 \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) \
                 -exec ${CLANGFORMAT} -i -style=file \{\} +
 )

@@ -7,10 +7,13 @@
  * @ingroup gui
  */
 
-
+#include "xrt/xrt_config_have.h"
 #include "util/u_var.h"
 #include "util/u_misc.h"
 #include "util/u_sink.h"
+#include "util/u_file.h"
+#include "util/u_json.h"
+#include "util/u_config_json.h"
 
 #ifdef XRT_HAVE_OPENCV
 #include "tracking/t_tracking.h"
@@ -18,6 +21,7 @@
 
 #include "xrt/xrt_frame.h"
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_settings.h"
 #include "xrt/xrt_tracking.h"
 #include "xrt/xrt_frameserver.h"
 
@@ -26,13 +30,10 @@
 
 #include <assert.h>
 
-enum camera_type
-{
-	CAM_REGULAR,
-	CAM_PS4,
-	CAM_LEAP_MOTION,
-};
-
+/*!
+ * An OpenCV-based camera calibration scene.
+ * @implements gui_scene
+ */
 struct calibration_scene
 {
 	struct gui_scene base;
@@ -44,9 +45,11 @@ struct calibration_scene
 
 	struct xrt_frame_context *xfctx;
 	struct xrt_fs *xfs;
-	size_t mode;
+	struct xrt_settings_tracking *settings;
 
-	int camera_type;
+	char filename[16];
+
+	bool saved;
 };
 
 
@@ -56,6 +59,67 @@ struct calibration_scene
  *
  */
 
+#ifdef XRT_HAVE_OPENCV
+static void
+saved_header(struct calibration_scene *cs)
+{
+	if (cs->saved) {
+		igText("Saved!");
+	} else {
+		igText("#### NOT SAVED! NOT SAVED! NOT SAVED! NOT SAVED! ####");
+	}
+}
+
+static void
+save_calibration(struct calibration_scene *cs)
+{
+	igText("Calibration complete - showing preview of undistortion.");
+
+	saved_header(cs);
+	igSetNextItemWidth(115);
+	igInputText(".calibration.json", cs->filename, sizeof(cs->filename), 0, NULL, NULL);
+	igSameLine(0.0f, 4.0f);
+
+	static ImVec2 button_dims = {0, 0};
+	if (!igButton("Save", button_dims)) {
+		saved_header(cs);
+		return;
+	}
+
+
+	/*
+	 *
+	 * Create the calibration path.
+	 *
+	 */
+
+	char tmp[sizeof(cs->filename) + 32];
+	snprintf(tmp, sizeof(tmp), "%s.calibration.json", cs->filename);
+
+	u_file_get_path_in_config_dir(tmp, cs->settings->calibration_path, sizeof(cs->settings->calibration_path));
+
+	/*
+	 *
+	 * Camera config file.
+	 *
+	 */
+	struct u_config_json json;
+	u_config_json_open_or_create_main_file(&json);
+	u_config_json_save_calibration(&json, cs->settings);
+	u_config_json_close(&json);
+
+	/*
+	 *
+	 * Camera calibration file.
+	 *
+	 */
+
+	t_stereo_camera_calibration_save(cs->settings->calibration_path, cs->status.stereo_data);
+
+	cs->saved = true;
+}
+#endif
+
 static void
 draw_texture(struct gui_ogl_texture *tex, bool header)
 {
@@ -64,7 +128,7 @@ draw_texture(struct gui_ogl_texture *tex, bool header)
 	}
 
 	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_None;
-	if (header && !igCollapsingHeader(tex->name, flags)) {
+	if (header && !igCollapsingHeaderBoolPtr(tex->name, NULL, flags)) {
 		return;
 	}
 
@@ -91,17 +155,14 @@ render_progress(struct calibration_scene *cs)
 {
 #ifdef XRT_HAVE_OPENCV
 	if (cs->status.finished) {
-
-		igText(
-		    "Calibration complete - showing preview of undistortion.");
+		save_calibration(cs);
 		return;
 	}
 
 	static const ImVec2 progress_dims = {150, 0};
 	if (cs->status.cooldown > 0) {
 		// This progress bar intentionally counts down to 0.
-		float cooldown = (float)(cs->status.cooldown) /
-		                 (float)cs->params.num_cooldown_frames;
+		float cooldown = (float)(cs->status.cooldown) / (float)cs->params.num_cooldown_frames;
 		igText("Move to a new position");
 		igProgressBar(cooldown, progress_dims, "Move to new position");
 	} else if (!cs->status.found) {
@@ -113,22 +174,17 @@ render_progress(struct calibration_scene *cs)
 	} else {
 		// This progress bar counts up from zero before
 		// capturing.
-		int waits_complete =
-		    cs->params.num_wait_for - cs->status.waits_remaining;
-		float hold_completion =
-		    (float)waits_complete / (float)cs->params.num_wait_for;
+		int waits_complete = cs->params.num_wait_for - cs->status.waits_remaining;
+		float hold_completion = (float)waits_complete / (float)cs->params.num_wait_for;
 		if (cs->status.waits_remaining == 0) {
 			igText("Capturing and processing!");
 		} else {
-			igText("Hold still! (%i/%i)", waits_complete,
-			       cs->params.num_wait_for);
+			igText("Hold still! (%i/%i)", waits_complete, cs->params.num_wait_for);
 		}
 		igProgressBar(hold_completion, progress_dims, "Hold still!");
 	}
-	float capture_completion = ((float)cs->status.num_collected) /
-	                           (float)cs->params.num_collect_total;
-	igText("Overall progress: %i of %i frames captured",
-	       cs->status.num_collected, cs->params.num_collect_total);
+	float capture_completion = ((float)cs->status.num_collected) / (float)cs->params.num_collect_total;
+	igText("Overall progress: %i of %i frames captured", cs->status.num_collected, cs->params.num_collect_total);
 	igProgressBar(capture_completion, progress_dims, NULL);
 
 #else
@@ -137,7 +193,7 @@ render_progress(struct calibration_scene *cs)
 #endif // XRT_HAVE_OPENCV
 }
 
-static void
+XRT_MAYBE_UNUSED static void
 scene_render_video(struct gui_scene *scene, struct gui_program *p)
 {
 	struct calibration_scene *cs = (struct calibration_scene *)scene;
@@ -175,19 +231,27 @@ scene_render_select(struct gui_scene *scene, struct gui_program *p)
 #ifdef XRT_HAVE_OPENCV
 	igBegin("Params", NULL, 0);
 
-	// clang-format off
-	igComboStr("Type", &cs->camera_type, "Regular\0PS4\0Leap Motion Controller\0\0", -1);
+	igComboStr("Type", (int *)&cs->settings->camera_type,
+	           "Regular Mono\0Regular Stereo (Side-by-Side)\0SLAM Stereo\0PS4\0Leap Motion Controller\0\0", -1);
 
-	switch (cs->camera_type) {
-	case CAM_REGULAR:
+	switch (cs->settings->camera_type) {
+	case XRT_SETTINGS_CAMERA_TYPE_REGULAR_MONO:
 		igCheckbox("Fisheye Camera", &cs->params.use_fisheye);
-		igCheckbox("Stereo (Side-By-Side) Camera", &cs->params.stereo_sbs);
+		cs->params.stereo_sbs = false;
 		break;
-	case CAM_PS4:
+	case XRT_SETTINGS_CAMERA_TYPE_REGULAR_SBS:
+		igCheckbox("Fisheye Camera", &cs->params.use_fisheye);
+		cs->params.stereo_sbs = true;
+		break;
+	case XRT_SETTINGS_CAMERA_TYPE_SLAM:
+		igCheckbox("Fisheye Camera", &cs->params.use_fisheye);
+		cs->params.stereo_sbs = true;
+		break;
+	case XRT_SETTINGS_CAMERA_TYPE_PS4:
 		cs->params.use_fisheye = false;
 		cs->params.stereo_sbs = true;
 		break;
-	case CAM_LEAP_MOTION:
+	case XRT_SETTINGS_CAMERA_TYPE_LEAP_MOTION:
 		cs->params.use_fisheye = true;
 		cs->params.stereo_sbs = true;
 		break;
@@ -210,7 +274,8 @@ scene_render_select(struct gui_scene *scene, struct gui_program *p)
 	igInputInt("Collect in groups of #", &cs->params.num_collect_restart, 1, 5, 0);
 
 	igSeparator();
-	igComboStr("Board type", (int*)&cs->params.pattern, "Checkers\0Circles\0Asymetric Circles\0\0", 3);
+	igComboStr("Board type", (int *)&cs->params.pattern, "Checkers\0Corners SB\0Circles\0Asymmetric Circles\0\0",
+	           3);
 	switch (cs->params.pattern) {
 	case T_BOARD_CHECKERS:
 		igInputInt("Checkerboard Rows", &cs->params.checkers.rows, 1, 5, 0);
@@ -218,6 +283,13 @@ scene_render_select(struct gui_scene *scene, struct gui_program *p)
 		igInputFloat("Checker Size (m)", &cs->params.checkers.size_meters, 0.0005, 0.001, NULL, 0);
 		igCheckbox("Subpixel", &cs->params.checkers.subpixel_enable);
 		igInputInt("Subpixel Search Size", &cs->params.checkers.subpixel_size, 1, 5, 0);
+		break;
+	case T_BOARD_SB_CHECKERS:
+		igInputInt("Internal Corner Rows", &cs->params.sb_checkers.rows, 1, 5, 0);
+		igInputInt("Internal Corner Columns", &cs->params.sb_checkers.cols, 1, 5, 0);
+		igInputFloat("Corner Spacing (m)", &cs->params.sb_checkers.size_meters, 0.0005, 0.001, NULL, 0);
+		igCheckbox("Marker", &cs->params.sb_checkers.marker);
+		igCheckbox("Normalize image", &cs->params.sb_checkers.normalize_image);
 		break;
 	case T_BOARD_CIRCLES:
 		igInputInt("Circle Rows", &cs->params.circles.rows, 1, 5, 0);
@@ -227,11 +299,11 @@ scene_render_select(struct gui_scene *scene, struct gui_program *p)
 	case T_BOARD_ASYMMETRIC_CIRCLES:
 		igInputInt("Circle Rows", &cs->params.asymmetric_circles.rows, 1, 5, 0);
 		igInputInt("Circle Columns", &cs->params.asymmetric_circles.cols, 1, 5, 0);
-		igInputFloat("Diagonal spacing (m)", &cs->params.asymmetric_circles.diagonal_distance_meters, 0.0005, 0.001, NULL, 0);
+		igInputFloat("Diagonal spacing (m)", &cs->params.asymmetric_circles.diagonal_distance_meters, 0.0005,
+		             0.001, NULL, 0);
 		break;
 	default: assert(false);
 	}
-	// clang-format on
 
 	static ImVec2 button_dims = {0, 0};
 	igSeparator();
@@ -242,37 +314,53 @@ scene_render_select(struct gui_scene *scene, struct gui_program *p)
 		return;
 	}
 
+	struct u_config_json config_json;
+	u_gui_state_open_file(&config_json);
+
+	struct cJSON *new_state;
+	t_calibration_gui_params_to_json(&new_state, &cs->params);
+
+	u_gui_state_save_scene(&config_json, GUI_STATE_SCENE_CALIBRATE, new_state);
+
 	cs->base.render = scene_render_video;
 
 	struct xrt_frame_sink *rgb = NULL;
 	struct xrt_frame_sink *raw = NULL;
 	struct xrt_frame_sink *cali = NULL;
 
-	p->texs[p->num_texs++] =
-	    gui_ogl_sink_create("Calibration", cs->xfctx, &rgb);
+	p->texs[p->num_texs++] = gui_ogl_sink_create("Calibration", cs->xfctx, &rgb);
 	u_sink_create_to_r8g8b8_or_l8(cs->xfctx, rgb, &rgb);
-	u_sink_queue_create(cs->xfctx, rgb, &rgb);
+	u_sink_simple_queue_create(cs->xfctx, rgb, &rgb);
 
 	p->texs[p->num_texs++] = gui_ogl_sink_create("Raw", cs->xfctx, &raw);
 	u_sink_create_to_r8g8b8_or_l8(cs->xfctx, raw, &raw);
-	u_sink_queue_create(cs->xfctx, raw, &raw);
+	u_sink_simple_queue_create(cs->xfctx, raw, &raw);
 
-	t_calibration_stereo_create(cs->xfctx, &cs->params, &cs->status, rgb,
-	                            &cali);
+	t_calibration_stereo_create(cs->xfctx, &cs->params, &cs->status, rgb, &cali);
 	u_sink_split_create(cs->xfctx, raw, cali, &cali);
 	u_sink_deinterleaver_create(cs->xfctx, cali, &cali);
-	u_sink_queue_create(cs->xfctx, cali, &cali);
+	u_sink_simple_queue_create(cs->xfctx, cali, &cali);
 
 	// Just after the camera create a quirk stream.
 	struct u_sink_quirk_params qp;
 	U_ZERO(&qp);
 	qp.stereo_sbs = cs->params.stereo_sbs;
-	qp.ps4_cam = cs->camera_type == CAM_PS4;
-	qp.leap_motion = cs->camera_type == CAM_LEAP_MOTION;
+	qp.ps4_cam = cs->settings->camera_type == XRT_SETTINGS_CAMERA_TYPE_PS4;
+	qp.leap_motion = cs->settings->camera_type == XRT_SETTINGS_CAMERA_TYPE_LEAP_MOTION;
 	u_sink_quirk_create(cs->xfctx, cali, &qp, &cali);
 
 	// Now that we have setup a node graph, start it.
-	xrt_fs_stream_start(cs->xfs, cali, cs->mode);
+
+	if (cs->settings->camera_type == XRT_SETTINGS_CAMERA_TYPE_SLAM) {
+		struct xrt_frame_sink *tmp = cali;
+		struct xrt_slam_sinks sinks;
+		u_sink_combiner_create(cs->xfctx, tmp, &sinks.left, &sinks.right);
+
+		xrt_fs_slam_stream_start(cs->xfs, &sinks);
+	} else {
+		xrt_fs_stream_start(cs->xfs, cali, XRT_FS_CAPTURE_TYPE_CALIBRATION, cs->settings->camera_mode);
+	}
+
 #else
 	gui_scene_delete_me(p, &cs->base);
 #endif
@@ -288,6 +376,14 @@ scene_destroy(struct gui_scene *scene, struct gui_program *p)
 		cs->xfctx = NULL;
 	}
 
+	if (cs->settings != NULL) {
+		free(cs->settings);
+		cs->settings = NULL;
+	}
+#ifdef XRT_HAVE_OPENCV
+	// Free data, no longer needed.
+	t_stereo_camera_calibration_reference(&cs->status.stereo_data, NULL);
+#endif
 	free(cs);
 }
 
@@ -302,7 +398,7 @@ void
 gui_scene_calibrate(struct gui_program *p,
                     struct xrt_frame_context *xfctx,
                     struct xrt_fs *xfs,
-                    size_t mode)
+                    struct xrt_settings_tracking *s)
 {
 	struct calibration_scene *cs = U_TYPED_CALLOC(struct calibration_scene);
 
@@ -310,10 +406,10 @@ gui_scene_calibrate(struct gui_program *p,
 	cs->base.destroy = scene_destroy;
 	cs->xfctx = xfctx;
 	cs->xfs = xfs;
-	cs->mode = mode;
+	cs->settings = s;
 
 #ifdef XRT_HAVE_OPENCV
-	t_calibration_params_default(&cs->params);
+	t_calibration_gui_params_load_or_default(&cs->params);
 
 	/*
 	 * Pre-quirk some known cameras.
@@ -325,24 +421,34 @@ gui_scene_calibrate(struct gui_program *p,
 		cs->params.num_cooldown_frames = 240;
 		cs->params.num_wait_for = 10;
 		cs->params.stereo_sbs = true;
-		cs->camera_type = CAM_PS4;
+		cs->settings->camera_type = XRT_SETTINGS_CAMERA_TYPE_PS4;
+		snprintf(cs->filename, sizeof(cs->filename), "PS4");
 	}
 
 	// Leap Motion.
 	if (strcmp(xfs->name, "Leap Motion Controller") == 0) {
 		cs->params.use_fisheye = true;
 		cs->params.stereo_sbs = true;
-		cs->camera_type = CAM_LEAP_MOTION;
+		cs->settings->camera_type = XRT_SETTINGS_CAMERA_TYPE_LEAP_MOTION;
+		snprintf(cs->filename, sizeof(cs->filename), "LeapMotion");
+	}
+
+	bool valve = strcmp(xfs->name, "3D Camera: eTronVideo") == 0;
+	bool elp = strcmp(xfs->name, "3D USB Camera: 3D USB Camera") == 0;
+
+	if (valve) {
+		snprintf(cs->filename, sizeof(cs->filename), "Index");
+	}
+	if (elp) {
+		snprintf(cs->filename, sizeof(cs->filename), "ELP");
 	}
 
 	// Valve Index and ELP Stereo Camera.
-	if (strcmp(xfs->name, "3D Camera: eTronVideo") == 0 ||
-	    strcmp(xfs->name, "3D USB Camera: 3D USB Camera") == 0) {
+	if (valve || elp) {
 		cs->params.use_fisheye = true;
 		cs->params.stereo_sbs = true;
-		cs->camera_type = CAM_REGULAR;
+		cs->settings->camera_type = XRT_SETTINGS_CAMERA_TYPE_REGULAR_SBS;
 	}
-
 
 #endif
 	gui_scene_push_front(p, &cs->base);

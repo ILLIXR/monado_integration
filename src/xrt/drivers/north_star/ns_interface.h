@@ -9,6 +9,8 @@
  */
 
 #pragma once
+#include "util/u_json.h"
+#include "xrt/xrt_device.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,27 +18,20 @@ extern "C" {
 
 
 /*!
- * @defgroup drv_ns North Star Driver
+ * @defgroup drv_ns North Star driver
  * @ingroup drv
  *
  * @brief Driver for the North Star HMD.
  */
 
 /*!
- * Create a probe for NS devices.
+ * Creates a North Star HMD.
  *
  * @ingroup drv_ns
  */
-struct xrt_auto_prober *
-ns_create_auto_prober(void);
 
-/*!
- * Create a North Star hmd.
- *
- * @ingroup drv_ns
- */
 struct xrt_device *
-ns_hmd_create(const char *config_path, bool print_spew, bool print_debug);
+ns_hmd_create(const cJSON *config_json);
 
 /*!
  * @dir drivers/north_star

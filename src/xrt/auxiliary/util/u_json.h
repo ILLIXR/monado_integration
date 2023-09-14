@@ -20,6 +20,13 @@
 extern "C" {
 #endif // __cplusplus
 
+/*!
+ * @brief Get a JSON object by string from a JSON object.
+ *
+ * @return The JSON object with the given name if successful, NULL if not.
+ */
+const cJSON *
+u_json_get(const cJSON *json, const char *f);
 
 /*!
  * @brief Parse a string from a JSON object into a char array.
@@ -29,6 +36,14 @@ extern "C" {
  */
 bool
 u_json_get_string_into_array(const cJSON *json, char *out, size_t max_size);
+
+/*!
+ * @brief Parse an bool from a JSON object.
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_bool(const cJSON *json, bool *out_bool);
 
 /*!
  * @brief Parse an int from a JSON object.
@@ -55,12 +70,28 @@ bool
 u_json_get_double(const cJSON *json, double *out_double);
 
 /*!
- * @brief Parse a vec3 from a JSON object.
+ * @brief Parse an xrt_vec3 from a JSON object.
  *
  * @return true if successful, false if not.
  */
 bool
 u_json_get_vec3(const cJSON *json, struct xrt_vec3 *out_vec3);
+
+/*!
+ * @brief Parse an xrt_vec3 from a JSON array.
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_vec3_array(const cJSON *json, struct xrt_vec3 *out_vec3);
+
+/*!
+ * @brief Parse an xrt_vec3_f64 from a JSON array.
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_vec3_f64_array(const cJSON *json, struct xrt_vec3_f64 *out_vec3);
 
 /*!
  * @brief Parse a quaternion from a JSON object.
@@ -71,14 +102,31 @@ bool
 u_json_get_quat(const cJSON *json, struct xrt_quat *out_quat);
 
 /*!
+ * @brief Parse a pose from a JSON object, composed of a vec3 named "position" and a quat named "orientation".
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_pose(const cJSON *json, struct xrt_pose *out_pose);
+
+
+/*!
+ * @brief Parse a pose from a JSON object, composed of
+ * a vec3 named "position", "translation", "location", "pos", or "loc"
+ * and a quat named "orientation". "rotation", or "rot"
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_pose_permissive(const cJSON *json, struct xrt_pose *out_pose);
+
+/*!
  * @brief Parse up to max_size floats from a JSON array.
  *
  * @return the number of elements set.
  */
 size_t
-u_json_get_float_array(const cJSON *json_array,
-                       float *out_array,
-                       size_t max_size);
+u_json_get_float_array(const cJSON *json_array, float *out_array, size_t max_size);
 
 /*!
  * @brief Parse up to max_size doubles from a JSON array.
@@ -86,9 +134,23 @@ u_json_get_float_array(const cJSON *json_array,
  * @return the number of elements set.
  */
 size_t
-u_json_get_double_array(const cJSON *json_array,
-                        double *out_array,
-                        size_t max_size);
+u_json_get_double_array(const cJSON *json_array, double *out_array, size_t max_size);
+
+/*!
+ * @brief Parse up to max_size int from a JSON array.
+ *
+ * @return the number of elements set.
+ */
+size_t
+u_json_get_int_array(const cJSON *json_array, int *out_array, size_t max_size);
+
+/*!
+ * @brief Parse a matrix_3x3 from a JSON object.
+ *
+ * @return true if successful, false if not.
+ */
+bool
+u_json_get_matrix_3x3(const cJSON *json, struct xrt_matrix_3x3 *out_matrix);
 
 
 #ifdef __cplusplus

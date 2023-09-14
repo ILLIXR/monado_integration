@@ -1,4 +1,4 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2022, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -10,7 +10,6 @@
 
 #include <stdlib.h>
 
-#include "xrt/xrt_gfx_xlib.h"
 #include "util/u_debug.h"
 
 #include "oxr_objects.h"
@@ -20,16 +19,20 @@
 static XrResult
 oxr_swapchain_vk_destroy(struct oxr_logger *log, struct oxr_swapchain *sc)
 {
-	if (sc->acquired_index >= 0) {
+	// Release any waited image.
+	if (sc->waited.yes) {
 		sc->release_image(log, sc, NULL);
 	}
 
-	sc->acquired_index = 0;
-
-	if (sc->swapchain != NULL) {
-		sc->swapchain->destroy(sc->swapchain);
-		sc->swapchain = NULL;
+	// Release any acquired images.
+	XrSwapchainImageWaitInfo waitInfo = {0};
+	while (!u_index_fifo_is_empty(&sc->acquired.fifo)) {
+		sc->wait_image(log, sc, &waitInfo);
+		sc->release_image(log, sc, NULL);
 	}
+
+	// Drop our reference, does NULL checking.
+	xrt_swapchain_reference(&sc->swapchain, NULL);
 
 	return XR_SUCCESS;
 }
@@ -40,10 +43,8 @@ oxr_swapchain_vk_enumerate_images(struct oxr_logger *log,
                                   uint32_t count,
                                   XrSwapchainImageBaseHeader *images)
 {
-	struct xrt_swapchain_vk *xscvk =
-	    (struct xrt_swapchain_vk *)sc->swapchain;
-	XrSwapchainImageVulkanKHR *vk_imgs =
-	    (XrSwapchainImageVulkanKHR *)images;
+	struct xrt_swapchain_vk *xscvk = (struct xrt_swapchain_vk *)sc->swapchain;
+	XrSwapchainImageVulkanKHR *vk_imgs = (XrSwapchainImageVulkanKHR *)images;
 
 	for (uint32_t i = 0; i < count; i++) {
 		vk_imgs[i].image = xscvk->images[i];

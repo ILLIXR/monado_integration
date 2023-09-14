@@ -22,15 +22,15 @@
 #include "flexkalman/PoseState.h"
 
 
-namespace xrt_fusion {
+namespace xrt::auxiliary::tracking {
+
 namespace types = flexkalman::types;
 using flexkalman::types::Vector;
 
 //! For things like accelerometers, which on some level measure the local vector
 //! of a world direction.
 template <typename State>
-class WorldDirectionMeasurement
-    : public flexkalman::MeasurementBase<WorldDirectionMeasurement<State>>
+class WorldDirectionMeasurement : public flexkalman::MeasurementBase<WorldDirectionMeasurement<State>>
 {
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -40,9 +40,7 @@ public:
 	WorldDirectionMeasurement(types::Vector<3> const &direction,
 	                          types::Vector<3> const &reference,
 	                          types::Vector<3> const &variance)
-	    : direction_(direction.normalized()),
-	      reference_(reference.normalized()),
-	      covariance_(variance.asDiagonal())
+	    : direction_(direction.normalized()), reference_(reference.normalized()), covariance_(variance.asDiagonal())
 	{}
 
 	MeasurementSquareMatrix const &
@@ -58,8 +56,7 @@ public:
 	}
 
 	MeasurementVector
-	getResidual(MeasurementVector const &predictedMeasurement,
-	            State const &s) const
+	getResidual(MeasurementVector const &predictedMeasurement, State const &s) const
 	{
 		return predictedMeasurement - reference_;
 	}
@@ -133,16 +130,14 @@ private:
 };
 #endif
 
-class BiasedGyroMeasurement
-    : public flexkalman::MeasurementBase<BiasedGyroMeasurement>
+class BiasedGyroMeasurement : public flexkalman::MeasurementBase<BiasedGyroMeasurement>
 {
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	static constexpr size_t Dimension = 3;
 	using MeasurementVector = types::Vector<Dimension>;
 	using MeasurementSquareMatrix = types::SquareMatrix<Dimension>;
-	BiasedGyroMeasurement(types::Vector<3> const &angVel,
-	                      types::Vector<3> const &variance)
+	BiasedGyroMeasurement(types::Vector<3> const &angVel, types::Vector<3> const &variance)
 	    : angVel_(angVel), covariance_(variance.asDiagonal())
 	{}
 
@@ -162,8 +157,7 @@ public:
 
 	template <typename State>
 	MeasurementVector
-	getResidual(MeasurementVector const &predictedMeasurement,
-	            State const &s) const
+	getResidual(MeasurementVector const &predictedMeasurement, State const &s) const
 	{
 		return predictedMeasurement - s.a().angularVelocity();
 	}
@@ -183,8 +177,7 @@ private:
  * For PS Move-like things, where there's a directly-computed absolute position
  * that is not at the tracked body's origin.
  */
-class AbsolutePositionLeverArmMeasurement
-    : public flexkalman::MeasurementBase<AbsolutePositionLeverArmMeasurement>
+class AbsolutePositionLeverArmMeasurement : public flexkalman::MeasurementBase<AbsolutePositionLeverArmMeasurement>
 {
 public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -199,12 +192,10 @@ public:
 	 * approximation would be translation along the vector to the center of
 	 * projection....
 	 */
-	AbsolutePositionLeverArmMeasurement(
-	    MeasurementVector const &measurement,
-	    MeasurementVector const &knownLocationInBodySpace,
-	    MeasurementVector const &variance)
-	    : measurement_(measurement),
-	      knownLocationInBodySpace_(knownLocationInBodySpace),
+	AbsolutePositionLeverArmMeasurement(MeasurementVector const &measurement,
+	                                    MeasurementVector const &knownLocationInBodySpace,
+	                                    MeasurementVector const &variance)
+	    : measurement_(measurement), knownLocationInBodySpace_(knownLocationInBodySpace),
 	      covariance_(variance.asDiagonal())
 	{}
 
@@ -221,8 +212,7 @@ public:
 	}
 
 	MeasurementVector
-	getResidual(MeasurementVector const &predictedMeasurement,
-	            State const & /*s*/) const
+	getResidual(MeasurementVector const &predictedMeasurement, State const & /*s*/) const
 	{
 		return measurement_ - predictedMeasurement;
 	}
@@ -238,4 +228,5 @@ private:
 	MeasurementVector knownLocationInBodySpace_;
 	MeasurementSquareMatrix covariance_;
 };
-} // namespace xrt_fusion
+
+} // namespace xrt::auxiliary::tracking

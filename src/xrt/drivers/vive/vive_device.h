@@ -11,89 +11,44 @@
 
 #include "xrt/xrt_device.h"
 #include "os/os_threading.h"
+#include "util/u_logging.h"
+#include "util/u_debug.h"
+#include "util/u_time.h"
+#include "util/u_var.h"
+#include "math/m_imu_3dof.h"
+#include "math/m_relation_history.h"
+
+#include "vive/vive_config.h"
+
+#include "vive_lighthouse.h"
+#include "xrt/xrt_tracking.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
 /*!
- * A lighthouse consisting of sensors.
- *
- * All sensors are placed in IMU space.
+ * @implements xrt_device
  */
-struct lh_model
-{
-	struct lh_sensor *sensors;
-	size_t num_sensors;
-};
-
-/*!
- * A single lighthouse senosor point and normal, in IMU space.
- */
-struct lh_sensor
-{
-	struct xrt_vec3 pos;
-	uint32_t _pad0;
-	struct xrt_vec3 normal;
-	uint32_t _pad1;
-};
-
-enum VIVE_VARIANT
-{
-	VIVE_UNKNOWN = 0,
-	VIVE_VARIANT_VIVE,
-	VIVE_VARIANT_PRO,
-	VIVE_VARIANT_INDEX
-};
-
 struct vive_device
 {
 	struct xrt_device base;
 	struct os_hid_device *mainboard_dev;
 	struct os_hid_device *sensors_dev;
-	enum VIVE_VARIANT variant;
+	struct os_hid_device *watchman_dev;
+
+	struct lighthouse_watchman watchman;
 
 	struct os_thread_helper sensors_thread;
+	struct os_thread_helper watchman_thread;
 	struct os_thread_helper mainboard_thread;
 
-	struct lh_model lh;
-
 	struct
 	{
-		uint64_t time;
+		timepoint_ns last_sample_ts_ns;
+		uint32_t last_sample_ticks;
 		uint8_t sequence;
-		double acc_range;
-		double gyro_range;
-		struct xrt_vec3 acc_bias;
-		struct xrt_vec3 acc_scale;
-		struct xrt_vec3 gyro_bias;
-		struct xrt_vec3 gyro_scale;
-
-		//! IMU position in tracking space.
-		struct xrt_pose trackref;
 	} imu;
-
-	struct
-	{
-		struct xrt_vec3 acc;
-		struct xrt_vec3 gyro;
-	} last;
-
-	struct
-	{
-		double lens_separation;
-		double persistence;
-		uint16_t eye_target_height_in_pixels;
-		uint16_t eye_target_width_in_pixels;
-
-		struct xrt_quat rot[2];
-
-		//! Head position in tracking space.
-		struct xrt_pose trackref;
-		//! Head position in IMU space.
-		struct xrt_pose imuref;
-	} display;
 
 	struct
 	{
@@ -103,63 +58,97 @@ struct vive_device
 		uint8_t button;
 	} board;
 
-	struct
-	{
-		uint32_t display_firmware_version;
-		uint32_t firmware_version;
-		uint8_t hardware_revision;
-		char *mb_serial_number;
-		char *model_number;
-		char *device_serial_number;
-	} firmware;
-
-	struct xrt_quat rot_filtered;
-
-	bool print_spew;
-	bool print_debug;
+	enum u_logging_level log_level;
 	bool disconnect_notified;
 
 	struct
 	{
 		bool calibration;
-		bool last;
+		bool fusion;
+		struct u_var_button switch_tracker_btn;
+		char hand_status[128];
+		char slam_status[128];
 	} gui;
+
+	struct vive_config config;
+
+	struct
+	{
+		//! Protects all members of the `fusion` substruct.
+		struct os_mutex mutex;
+
+		//! Main fusion calculator.
+		struct m_imu_3dof i3dof;
+
+		//! Prediction
+		struct m_relation_history *relation_hist;
+	} fusion;
+
+	//! Fields related to camera-based tracking (SLAM and hand tracking)
+	struct
+	{
+		//! SLAM tracker.
+		struct xrt_tracked_slam *slam;
+
+		//! Set at start. Whether the SLAM tracker was initialized.
+		bool slam_enabled;
+
+		//! Set at start. Whether the hand tracker was initialized.
+		bool hand_enabled;
+
+	} tracking;
+
+	//! Whether to track the HMD with 6dof SLAM or fallback to the 3dof tracker
+	bool slam_over_3dof;
+
+	//! In charge of managing raw samples, redirects them for tracking
+	struct vive_source *source;
+
+	//! Last tracked pose
+	struct xrt_pose pose;
+
+	//! Additional offset to apply to `pose`
+	struct xrt_pose offset;
 };
+
+
+/*!
+ * Summary of the status of various trackers.
+ *
+ * @todo Creation flow is a bit broken for now, in the future this info should be closer
+ * to the tracker creation code, thus avoiding the need to pass it around like this.
+ */
+struct vive_tracking_status
+{
+	bool slam_wanted;
+	bool slam_supported;
+	bool slam_enabled;
+
+	//! Has Monado been built with the correct libraries to do optical hand tracking?
+	bool hand_supported;
+
+	//! Did we find controllers?
+	bool controllers_found;
+
+	//! If this is set to ON, we always do optical hand tracking even if controllers were found.
+	//! If this is set to AUTO, we do optical hand tracking only if no controllers were found.
+	//! If this is set to OFF, we don't do optical hand tracking.
+	enum debug_tristate_option hand_wanted;
+
+	//! Computed in target_builder_lighthouse.c based on the past three
+	bool hand_enabled;
+};
+
+void
+vive_set_trackers_status(struct vive_device *d, struct vive_tracking_status status);
 
 struct vive_device *
 vive_device_create(struct os_hid_device *mainboard_dev,
                    struct os_hid_device *sensors_dev,
-                   enum VIVE_VARIANT variant);
-
-/*
- *
- * Printing functions.
- *
- */
-
-#define VIVE_SPEW(p, ...)                                                      \
-	do {                                                                   \
-		if (p->print_spew) {                                           \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
-#define VIVE_DEBUG(p, ...)                                                     \
-	do {                                                                   \
-		if (p->print_debug) {                                          \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
-
-#define VIVE_ERROR(...)                                                        \
-	do {                                                                   \
-		fprintf(stderr, "%s - ", __func__);                            \
-		fprintf(stderr, __VA_ARGS__);                                  \
-		fprintf(stderr, "\n");                                         \
-	} while (false)
+                   struct os_hid_device *watchman_dev,
+                   enum VIVE_VARIANT variant,
+                   struct vive_tracking_status tstatus,
+                   struct vive_source *vs);
 
 #ifdef __cplusplus
 }

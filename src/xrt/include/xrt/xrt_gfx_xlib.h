@@ -17,18 +17,20 @@ extern "C" {
 #endif
 
 
-typedef void *Display;
+typedef struct _XDisplay Display; // NOLINT
 typedef void *GLXFBConfig;
 typedef void *GLXDrawable;
 typedef void *GLXContext;
 struct time_state;
 
 /*!
+ * Create an OpenGL compositor client using xlib.
+ *
  * @ingroup xrt_iface
+ * @public @memberof xrt_compositor_native
  */
 struct xrt_compositor_gl *
-xrt_gfx_provider_create_gl_xlib(struct xrt_device *xdev,
-                                struct time_state *timekeeping,
+xrt_gfx_provider_create_gl_xlib(struct xrt_compositor_native *xcn,
                                 Display *xDisplay,
                                 uint32_t visualid,
                                 GLXFBConfig glxFBConfig,

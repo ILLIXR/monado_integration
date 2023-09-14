@@ -15,6 +15,10 @@
 
 static ImVec2 button_dims = {256, 0};
 
+/*!
+ * A main menu GUI scene allowing selection of which scene to proceed to.
+ * @implements gui_scene
+ */
 struct main_menu
 {
 	struct gui_scene base;
@@ -30,6 +34,12 @@ scene_render(struct gui_scene *scene, struct gui_program *p)
 		gui_scene_select_video_calibrate(p);
 	}
 
+	if (igButton("Tracking Overrides", button_dims)) {
+		gui_scene_delete_me(p, scene);
+
+		gui_scene_tracking_overrides(p);
+	}
+
 	if (igButton("Debug Test", button_dims)) {
 		gui_scene_delete_me(p, scene);
 
@@ -41,9 +51,30 @@ scene_render(struct gui_scene *scene, struct gui_program *p)
 		gui_scene_debug(p);
 	}
 
-	if (igButton("Video (deprecated)", button_dims)) {
+	if (igButton("Record (DepthAI Monocular)", button_dims)) {
 		gui_scene_delete_me(p, scene);
-		gui_scene_select_video_test(p);
+		gui_scene_record(p, "depthai-monocular");
+	}
+
+	if (igButton("Record (DepthAI Stereo)", button_dims)) {
+		gui_scene_delete_me(p, scene);
+		gui_scene_record(p, "depthai-stereo");
+	}
+
+	if (igButton("Record (Index)", button_dims)) {
+		gui_scene_delete_me(p, scene);
+		gui_scene_record(p, "index");
+	}
+
+	if (igButton("Record (Leap Motion)", button_dims)) {
+		gui_scene_delete_me(p, scene);
+		gui_scene_record(p, "leap_motion");
+	}
+
+	if (igButton("Remote", button_dims)) {
+		gui_scene_delete_me(p, scene);
+
+		gui_scene_remote(p, NULL);
 	}
 
 	igSeparator();

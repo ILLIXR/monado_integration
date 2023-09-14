@@ -29,6 +29,7 @@ extern "C" {
  * Common struct holding state for the GUI interface.
  *
  * @ingroup gui
+ * @extends gui_program
  */
 struct sdl2_program
 {
@@ -37,21 +38,22 @@ struct sdl2_program
 	bool sdl_initialized;
 	SDL_Window *win;
 	SDL_GLContext ctx;
+	char layout_file[1024];
 };
 
 
 /*!
  * Init SDL2, create and show a window and bring up any other structs needed.
  *
- * @ingroup gui
+ * @public @memberof sdl2_program
  */
 int
 gui_sdl2_init(struct sdl2_program *p);
 
 /*!
- * Loop until user request quit and show Imgui interface.
+ * Loop until user requests quit, and show Imgui interface.
  *
- * @ingroup gui
+ * @public @memberof sdl2_program
  */
 void
 gui_sdl2_imgui_loop(struct sdl2_program *p);
@@ -59,7 +61,7 @@ gui_sdl2_imgui_loop(struct sdl2_program *p);
 /*!
  * Loop until quit signal has been received.
  *
- * @ingroup gui
+ * @public @memberof sdl2_program
  */
 void
 gui_sdl2_loop(struct sdl2_program *p);
@@ -67,7 +69,7 @@ gui_sdl2_loop(struct sdl2_program *p);
 /*!
  * Destroy all SDL things and quit SDL.
  *
- * @ingroup gui
+ * @public @memberof sdl2_program
  */
 void
 gui_sdl2_quit(struct sdl2_program *p);

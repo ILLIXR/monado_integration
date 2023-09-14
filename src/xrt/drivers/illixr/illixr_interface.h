@@ -1,9 +1,9 @@
-// Copyright 2020, Collabora, Ltd.
+// Copyright 2020-2021, The Board of Trustees of the University of Illinois.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
- * @brief  Interface to illixr driver.
- * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @brief  ILLIXR driver interface
+ * @author RSIM Group <illixr@cs.illinois.edu>
  * @ingroup drv_illixr
  */
 
@@ -13,19 +13,15 @@
 extern "C" {
 #endif
 
-// Placeholder values
-#define ILLIXR_VID 0x0114
-#define ILLIXR_PID 0x0514
-
 /*!
- * @defgroup drv_illixr ILLIXR driver.
+ * @defgroup drv_illixr illixr driver.
  * @ingroup drv
  *
- * @brief Simple do nothing ILLIXR driver.
+ * @brief illixr driver.
  */
 
 /*!
- * Create a auto prober for ILLIXR devices.
+ * Create a auto prober for illixr devices.
  *
  * @ingroup drv_illixr
  */
@@ -33,25 +29,12 @@ struct xrt_auto_prober *
 illixr_create_auto_prober(void);
 
 /*!
- * Create an ILLIXR hmd.
+ * Create a illixr hmd.
  *
  * @ingroup drv_illixr
  */
 struct xrt_device *
 illixr_hmd_create(const char *path, const char *comp);
-
-
-/*!
- * Probing function for ILLIXR.
- *
- * @ingroup drv_hydra
- */
-int
-illixr_found(struct xrt_prober *xp,
-             struct xrt_prober_device **devices,
-             size_t num_devices,
-             size_t index,
-             struct xrt_device **out_xdevs);
 
 /*!
  * @dir drivers/illixr

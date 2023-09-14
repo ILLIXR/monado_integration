@@ -28,6 +28,12 @@
 #define max(a, b) (a > b ? a : b)
 #define min(a, b) (a < b ? a : b)
 
+/*!
+ * An @ref xrt_frame_sink that can be used to select HSV thresholds
+ * interactively.
+ * @implements xrt_frame_sink
+ * @implements xrt_frame_node
+ */
 class DebugHSVPicker
 {
 public:
@@ -73,7 +79,7 @@ process_frame_yuv(class DebugHSVPicker &d, struct xrt_frame *xf)
 {
 	for (uint32_t y = 0; y < xf->height; y++) {
 		uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
-		auto hsv = d.debug.hsv.ptr<uint8_t>(y);
+		auto *hsv = d.debug.hsv.ptr<uint8_t>(y);
 		for (uint32_t x = 0; x < xf->width; x++) {
 			uint8_t y = src[0];
 			uint8_t cb = src[1];
@@ -90,8 +96,8 @@ process_frame_yuv(class DebugHSVPicker &d, struct xrt_frame *xf)
 		}
 	}
 
-	cv::inRange(d.debug.hsv, cv::Scalar(low_H, low_S, low_V),
-	            cv::Scalar(high_H, high_S, high_V), d.debug.threshold);
+	cv::inRange(d.debug.hsv, cv::Scalar(low_H, low_S, low_V), cv::Scalar(high_H, high_S, high_V),
+	            d.debug.threshold);
 	cv::imshow(PICK_WIN, d.debug.threshold);
 }
 
@@ -100,7 +106,7 @@ process_frame_yuyv(class DebugHSVPicker &d, struct xrt_frame *xf)
 {
 	for (uint32_t y = 0; y < xf->height; y++) {
 		uint8_t *src = (uint8_t *)xf->data + y * xf->stride;
-		auto hsv = d.debug.hsv.ptr<uint8_t>(y);
+		auto *hsv = d.debug.hsv.ptr<uint8_t>(y);
 		for (uint32_t x = 0; x < xf->width; x += 2) {
 			uint8_t y1 = src[0];
 			uint8_t cb = src[1];
@@ -122,8 +128,8 @@ process_frame_yuyv(class DebugHSVPicker &d, struct xrt_frame *xf)
 		}
 	}
 
-	cv::inRange(d.debug.hsv, cv::Scalar(low_H, low_S, low_V),
-	            cv::Scalar(high_H, high_S, high_V), d.debug.threshold);
+	cv::inRange(d.debug.hsv, cv::Scalar(low_H, low_S, low_V), cv::Scalar(high_H, high_S, high_V),
+	            d.debug.threshold);
 	cv::imshow(PICK_WIN, d.debug.threshold);
 }
 
@@ -134,11 +140,8 @@ process_frame(class DebugHSVPicker &d, struct xrt_frame *xf)
 
 	switch (xf->format) {
 	case XRT_FORMAT_YUV888: process_frame_yuv(d, xf); break;
-	case XRT_FORMAT_YUV422: process_frame_yuyv(d, xf); break;
-	default:
-		fprintf(stderr, "ERROR: Bad format '%s'",
-		        u_format_str(xf->format));
-		break;
+	case XRT_FORMAT_YUYV422: process_frame_yuyv(d, xf); break;
+	default: U_LOG_E("Bad format '%s'", u_format_str(xf->format)); break;
 	}
 }
 
@@ -208,7 +211,7 @@ t_debug_hsv_picker_break_apart(struct xrt_frame_node *node)
 extern "C" void
 t_debug_hsv_picker_destroy(struct xrt_frame_node *node)
 {
-	auto d = container_of(node, DebugHSVPicker, node);
+	auto *d = container_of(node, DebugHSVPicker, node);
 	delete d;
 }
 
@@ -227,18 +230,12 @@ t_debug_hsv_picker_create(struct xrt_frame_context *xfctx,
 	d.passthrough = passthrough;
 
 	// Trackbars to set thresholds for HSV values
-	cv::createTrackbar("Low H", PICK_WIN, &low_H, max_value_H,
-	                   on_low_H_thresh_trackbar);
-	cv::createTrackbar("High H", PICK_WIN, &high_H, max_value_H,
-	                   on_high_H_thresh_trackbar);
-	cv::createTrackbar("Low S", PICK_WIN, &low_S, max_value,
-	                   on_low_S_thresh_trackbar);
-	cv::createTrackbar("High S", PICK_WIN, &high_S, max_value,
-	                   on_high_S_thresh_trackbar);
-	cv::createTrackbar("Low V", PICK_WIN, &low_V, max_value,
-	                   on_low_V_thresh_trackbar);
-	cv::createTrackbar("High V", PICK_WIN, &high_V, max_value,
-	                   on_high_V_thresh_trackbar);
+	cv::createTrackbar("Low H", PICK_WIN, &low_H, max_value_H, on_low_H_thresh_trackbar);
+	cv::createTrackbar("High H", PICK_WIN, &high_H, max_value_H, on_high_H_thresh_trackbar);
+	cv::createTrackbar("Low S", PICK_WIN, &low_S, max_value, on_low_S_thresh_trackbar);
+	cv::createTrackbar("High S", PICK_WIN, &high_S, max_value, on_high_S_thresh_trackbar);
+	cv::createTrackbar("Low V", PICK_WIN, &low_V, max_value, on_low_V_thresh_trackbar);
+	cv::createTrackbar("High V", PICK_WIN, &high_V, max_value, on_high_V_thresh_trackbar);
 
 	cv::startWindowThread();
 

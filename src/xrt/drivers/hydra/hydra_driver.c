@@ -19,17 +19,19 @@
 
 #include "xrt/xrt_prober.h"
 
+#include "os/os_hid.h"
+#include "os/os_time.h"
+
 #include "math/m_api.h"
 #include "util/u_debug.h"
 #include "util/u_device.h"
 #include "util/u_misc.h"
 #include "util/u_time.h"
+#include "util/u_logging.h"
 
 #include "hydra_interface.h"
 
-#ifdef XRT_OS_LINUX
-#include <unistd.h>
-#endif
+
 
 /*
  *
@@ -37,33 +39,14 @@
  *
  */
 
-#define HYDRA_SPEW(p, ...)                                                     \
-	do {                                                                   \
-		if (p->print_spew) {                                           \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
+#define HYDRA_TRACE(d, ...) U_LOG_XDEV_IFL_T(&d->base, d->sys->log_level, __VA_ARGS__)
+#define HYDRA_DEBUG(d, ...) U_LOG_XDEV_IFL_D(&d->base, d->sys->log_level, __VA_ARGS__)
+#define HYDRA_INFO(d, ...) U_LOG_XDEV_IFL_I(&d->base, d->sys->log_level, __VA_ARGS__)
+#define HYDRA_WARN(d, ...) U_LOG_XDEV_IFL_W(&d->base, d->sys->log_level, __VA_ARGS__)
+#define HYDRA_ERROR(d, ...) U_LOG_XDEV_IFL_E(&d->base, d->sys->log_level, __VA_ARGS__)
 
-#define HYDRA_DEBUG(p, ...)                                                    \
-	do {                                                                   \
-		if (p->print_debug) {                                          \
-			fprintf(stderr, "%s - ", __func__);                    \
-			fprintf(stderr, __VA_ARGS__);                          \
-			fprintf(stderr, "\n");                                 \
-		}                                                              \
-	} while (false)
+DEBUG_GET_ONCE_LOG_OPTION(hydra_log, "HYDRA_LOG", U_LOGGING_WARN)
 
-#define HYDRA_ERROR(p, ...)                                                    \
-	do {                                                                   \
-		fprintf(stderr, "%s - ", __func__);                            \
-		fprintf(stderr, __VA_ARGS__);                                  \
-		fprintf(stderr, "\n");                                         \
-	} while (false)
-
-DEBUG_GET_ONCE_BOOL_OPTION(hydra_spew, "HYDRA_PRINT_SPEW", false)
-DEBUG_GET_ONCE_BOOL_OPTION(hydra_debug, "HYDRA_PRINT_DEBUG", false)
 enum hydra_input_index
 {
 	HYDRA_INDEX_1_CLICK,
@@ -96,25 +79,19 @@ enum hydra_button_bit
 static const uint8_t HYDRA_REPORT_START_MOTION[] = {
 
     0x00, // first byte must be report type
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x03, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x06, 0x00};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00};
 
 static const uint8_t HYDRA_REPORT_START_GAMEPAD[] = {
     0x00, // first byte must be report type
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x05, 0x00};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00};
 
 struct hydra_controller_state
 {
@@ -150,6 +127,7 @@ struct hydra_device;
  * A Razer Hydra system containing two controllers.
  *
  * @ingroup drv_hydra
+ * @extends xrt_tracking_origin
  */
 struct hydra_system
 {
@@ -179,14 +157,14 @@ struct hydra_system
 	bool was_in_gamepad_mode;
 	int motion_attempt_number;
 
-	bool print_spew;
-	bool print_debug;
+	enum u_logging_level log_level;
 };
 
 /*!
  * A Razer Hydra device, representing just a single controller.
  *
  * @ingroup drv_hydra
+ * @implements xrt_device
  */
 struct hydra_device
 {
@@ -205,9 +183,6 @@ struct hydra_device
 
 	//! Which hydra controller in the system are we?
 	size_t index;
-
-	bool print_spew;
-	bool print_debug;
 };
 
 /*
@@ -242,8 +217,7 @@ hydra_system(struct xrt_tracking_origin *xtrack)
  * @relates hydra_sm
  */
 static float
-hydra_sm_seconds_since_transition(struct hydra_state_machine *hsm,
-                                  timepoint_ns now)
+hydra_sm_seconds_since_transition(struct hydra_state_machine *hsm, timepoint_ns now)
 {
 
 	if (hsm->transition_time == 0) {
@@ -261,9 +235,7 @@ hydra_sm_seconds_since_transition(struct hydra_state_machine *hsm,
  * @relates hydra_sm
  */
 static int
-hydra_sm_transition(struct hydra_state_machine *hsm,
-                    enum hydra_sm_state new_state,
-                    timepoint_ns now)
+hydra_sm_transition(struct hydra_state_machine *hsm, enum hydra_sm_state new_state, timepoint_ns now)
 {
 	if (hsm->transition_time == 0) {
 		hsm->transition_time = now;
@@ -312,14 +284,10 @@ hydra_device_parse_controller(struct hydra_device *hd, uint8_t *buf)
 	state->pose.position.y = -hydra_read_int16_le(&buf) * SCALE_MM_TO_METER;
 
 	// the negatives are to fix handedness
-	state->pose.orientation.w =
-	    hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
-	state->pose.orientation.x =
-	    hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
-	state->pose.orientation.y =
-	    -hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
-	state->pose.orientation.z =
-	    -hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->pose.orientation.w = hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->pose.orientation.x = hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->pose.orientation.y = -hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->pose.orientation.z = -hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
 
 	//! @todo the presence of this suggest we're not decoding the
 	//! orientation right.
@@ -327,26 +295,22 @@ hydra_device_parse_controller(struct hydra_device *hd, uint8_t *buf)
 
 	state->buttons = hydra_read_uint8(&buf);
 
-	state->js.x =
-	    hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
-	state->js.y =
-	    hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->js.x = hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
+	state->js.y = hydra_read_int16_le(&buf) * SCALE_INT16_TO_FLOAT_PLUSMINUS_1;
 
 	state->trigger = hydra_read_uint8(&buf) * SCALE_UINT8_TO_FLOAT_0_TO_1;
 
-	HYDRA_SPEW(hd,
-	           "\n\t"
-	           "controller:  %i\n\t"
-	           "position:    (%-1.2f, %-1.2f, %-1.2f)\n\t"
-	           "orientation: (%-1.2f, %-1.2f, %-1.2f, %-1.2f)\n\t"
-	           "buttons:     %08x\n\t"
-	           "joystick:    (%-1.2f, %-1.2f)\n\t"
-	           "trigger:     %01.2f\n",
-	           (int)hd->index, state->pose.position.x,
-	           state->pose.position.y, state->pose.position.z,
-	           state->pose.orientation.x, state->pose.orientation.y,
-	           state->pose.orientation.z, state->pose.orientation.w,
-	           state->buttons, state->js.x, state->js.y, state->trigger);
+	HYDRA_TRACE(hd,
+	            "\n\t"
+	            "controller:  %i\n\t"
+	            "position:    (%-1.2f, %-1.2f, %-1.2f)\n\t"
+	            "orientation: (%-1.2f, %-1.2f, %-1.2f, %-1.2f)\n\t"
+	            "buttons:     %08x\n\t"
+	            "joystick:    (%-1.2f, %-1.2f)\n\t"
+	            "trigger:     %01.2f\n",
+	            (int)hd->index, state->pose.position.x, state->pose.position.y, state->pose.position.z,
+	            state->pose.orientation.x, state->pose.orientation.y, state->pose.orientation.z,
+	            state->pose.orientation.w, state->buttons, state->js.x, state->js.y, state->trigger);
 }
 
 static int
@@ -364,16 +328,14 @@ hydra_system_read_data_hid(struct hydra_system *hs, timepoint_ns now)
 			return got_message ? 1 : 0;
 		}
 		if (ret != 52) {
-			HYDRA_ERROR(hs, "Unexpected data report of size %d",
-			            ret);
+			U_LOG_IFL_E(hs->log_level, "Unexpected data report of size %d", ret);
 			return -1;
 		}
 		got_message = true;
 		uint8_t new_counter = buffer[7];
 		bool missed = false;
 		if (hs->report_counter != -1) {
-			uint8_t expected_counter =
-			    ((hs->report_counter + 1) & 0xff);
+			uint8_t expected_counter = ((hs->report_counter + 1) & 0xff);
 			missed = new_counter != expected_counter;
 		}
 		hs->report_counter = new_counter;
@@ -386,11 +348,11 @@ hydra_system_read_data_hid(struct hydra_system *hs, timepoint_ns now)
 		}
 
 		hs->report_time = now;
-		HYDRA_SPEW(hs,
-		           "\n\t"
-		           "missed: %s\n\t"
-		           "seq_no: %x\n",
-		           missed ? "yes" : "no", new_counter);
+		U_LOG_IFL_T(hs->log_level,
+		            "\n\t"
+		            "missed: %s\n\t"
+		            "seq_no: %x\n",
+		            missed ? "yes" : "no", new_counter);
 	} while (true);
 
 	return 0;
@@ -407,20 +369,18 @@ hydra_system_enter_motion_control(struct hydra_system *hs, timepoint_ns now)
 
 	hs->was_in_gamepad_mode = true;
 	hs->motion_attempt_number++;
-	HYDRA_DEBUG(hs,
+	U_LOG_IFL_D(hs->log_level,
 	            "Setting feature report to start motion-controller mode, "
 	            "attempt %d",
 	            hs->motion_attempt_number);
 
-	os_hid_set_feature(hs->command_hid, HYDRA_REPORT_START_MOTION,
-	                   sizeof(HYDRA_REPORT_START_MOTION));
+	os_hid_set_feature(hs->command_hid, HYDRA_REPORT_START_MOTION, sizeof(HYDRA_REPORT_START_MOTION));
 
-	// Doing a dummy get-feature now.
+	// Doing a throwaway get-feature now.
 	uint8_t buf[91] = {0};
 	os_hid_get_feature(hs->command_hid, 0, buf, sizeof(buf));
 
-	return hydra_sm_transition(&hs->sm,
-	                           HYDRA_SM_LISTENING_AFTER_SET_FEATURE, now);
+	return hydra_sm_transition(&hs->sm, HYDRA_SM_LISTENING_AFTER_SET_FEATURE, now);
 }
 /*!
  * Update the internal state of the Hydra driver.
@@ -429,10 +389,10 @@ hydra_system_enter_motion_control(struct hydra_system *hs, timepoint_ns now)
  *
  */
 static int
-hydra_system_update(struct hydra_system *hs, struct time_state *timekeeping)
+hydra_system_update(struct hydra_system *hs)
 {
 	assert(hs);
-	timepoint_ns now = time_state_get_now(timekeeping);
+	timepoint_ns now = os_monotonic_get_ns();
 
 	// In all states of the state machine:
 	// Try reading a report: will only return >0 if we get a full motion
@@ -447,8 +407,7 @@ hydra_system_update(struct hydra_system *hs, struct time_state *timekeeping)
 	switch (hs->sm.current_state) {
 
 	case HYDRA_SM_LISTENING_AFTER_CONNECT: {
-		float state_duration_s =
-		    hydra_sm_seconds_since_transition(&hs->sm, now);
+		float state_duration_s = hydra_sm_seconds_since_transition(&hs->sm, now);
 		if (state_duration_s > 1.0f) {
 			// only waiting 1 second for the initial report after
 			// connect
@@ -457,8 +416,7 @@ hydra_system_update(struct hydra_system *hs, struct time_state *timekeeping)
 	} break;
 
 	case HYDRA_SM_LISTENING_AFTER_SET_FEATURE: {
-		float state_duration_s =
-		    hydra_sm_seconds_since_transition(&hs->sm, now);
+		float state_duration_s = hydra_sm_seconds_since_transition(&hs->sm, now);
 		if (state_duration_s > 5.0f) {
 			// giving each motion control attempt 5 seconds to work.
 			hydra_system_enter_motion_control(hs, now);
@@ -472,10 +430,7 @@ hydra_system_update(struct hydra_system *hs, struct time_state *timekeeping)
 }
 
 static void
-hydra_device_update_input_click(struct hydra_device *hd,
-                                timepoint_ns now,
-                                int index,
-                                uint32_t bit)
+hydra_device_update_input_click(struct hydra_device *hd, timepoint_ns now, int index, uint32_t bit)
 {
 	assert(hd);
 	hd->base.inputs[index].timestamp = now;
@@ -489,34 +444,25 @@ hydra_device_update_input_click(struct hydra_device *hd,
  */
 
 static void
-hydra_device_update_inputs(struct xrt_device *xdev,
-                           struct time_state *timekeeping)
+hydra_device_update_inputs(struct xrt_device *xdev)
 {
 	struct hydra_device *hd = hydra_device(xdev);
 	struct hydra_system *hs = hydra_system(xdev->tracking_origin);
 
-	hydra_system_update(hs, timekeeping);
+	hydra_system_update(hs);
 
 	if (hd->input_time != hs->report_time) {
 		timepoint_ns now = hs->report_time;
 		hd->input_time = now;
 
-		hydra_device_update_input_click(hd, now, HYDRA_INDEX_1_CLICK,
-		                                HYDRA_BUTTON_BIT_1);
-		hydra_device_update_input_click(hd, now, HYDRA_INDEX_2_CLICK,
-		                                HYDRA_BUTTON_BIT_2);
-		hydra_device_update_input_click(hd, now, HYDRA_INDEX_3_CLICK,
-		                                HYDRA_BUTTON_BIT_3);
-		hydra_device_update_input_click(hd, now, HYDRA_INDEX_4_CLICK,
-		                                HYDRA_BUTTON_BIT_4);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_1_CLICK, HYDRA_BUTTON_BIT_1);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_2_CLICK, HYDRA_BUTTON_BIT_2);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_3_CLICK, HYDRA_BUTTON_BIT_3);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_4_CLICK, HYDRA_BUTTON_BIT_4);
 
-		hydra_device_update_input_click(
-		    hd, now, HYDRA_INDEX_MIDDLE_CLICK, HYDRA_BUTTON_BIT_MIDDLE);
-		hydra_device_update_input_click(
-		    hd, now, HYDRA_INDEX_BUMPER_CLICK, HYDRA_BUTTON_BIT_BUMPER);
-		hydra_device_update_input_click(hd, now,
-		                                HYDRA_INDEX_JOYSTICK_CLICK,
-		                                HYDRA_INDEX_JOYSTICK_CLICK);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_MIDDLE_CLICK, HYDRA_BUTTON_BIT_MIDDLE);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_BUMPER_CLICK, HYDRA_BUTTON_BIT_BUMPER);
+		hydra_device_update_input_click(hd, now, HYDRA_INDEX_JOYSTICK_CLICK, HYDRA_INDEX_JOYSTICK_CLICK);
 
 		struct xrt_input *inputs = hd->base.inputs;
 		struct hydra_controller_state *state = &(hd->state);
@@ -537,25 +483,21 @@ hydra_device_update_inputs(struct xrt_device *xdev,
 static void
 hydra_device_get_tracked_pose(struct xrt_device *xdev,
                               enum xrt_input_name name,
-                              struct time_state *timekeeping,
-                              int64_t *out_timestamp,
+                              uint64_t at_timestamp_ns,
                               struct xrt_space_relation *out_relation)
 {
 	struct hydra_device *hd = hydra_device(xdev);
 	struct hydra_system *hs = hydra_system(xdev->tracking_origin);
 
-	hydra_system_update(hs, timekeeping);
+	hydra_system_update(hs);
 
-	*out_timestamp = hs->report_time;
 	out_relation->pose = hd->state.pose;
 
 	//! @todo how do we report this is not (necessarily) the same base space
 	//! as the HMD?
 	out_relation->relation_flags = (enum xrt_space_relation_flags)(
-	    XRT_SPACE_RELATION_POSITION_VALID_BIT |
-	    XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
-	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT |
-	    XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT);
+	    XRT_SPACE_RELATION_POSITION_VALID_BIT | XRT_SPACE_RELATION_POSITION_TRACKED_BIT |
+	    XRT_SPACE_RELATION_ORIENTATION_VALID_BIT | XRT_SPACE_RELATION_ORIENTATION_TRACKED_BIT);
 	// struct xrt_vec3 pos = out_relation->pose.position;
 	// struct xrt_quat quat = out_relation->pose.orientation;
 	// HYDRA_SPEW(hd, "GET_TRACKED_POSE (%f, %f, %f) (%f, %f, %f, %f) ",
@@ -581,19 +523,16 @@ hydra_system_remove_child(struct hydra_system *hs, struct hydra_device *hd)
 
 	if (hs->refs == 0) {
 		// No more children, destroy system.
-		if (hs->data_hid != NULL && hs->command_hid != NULL &&
-		    hs->sm.current_state == HYDRA_SM_REPORTING &&
+		if (hs->data_hid != NULL && hs->command_hid != NULL && hs->sm.current_state == HYDRA_SM_REPORTING &&
 		    hs->was_in_gamepad_mode) {
 
-			HYDRA_DEBUG(
-			    hs,
-			    "hydra: Sending command to re-enter gamepad mode "
-			    "and pausing while it takes effect.");
+			U_LOG_IFL_D(hs->log_level,
+			            "hydra: Sending command to re-enter gamepad mode "
+			            "and pausing while it takes effect.");
 
-			os_hid_set_feature(hs->command_hid,
-			                   HYDRA_REPORT_START_GAMEPAD,
+			os_hid_set_feature(hs->command_hid, HYDRA_REPORT_START_GAMEPAD,
 			                   sizeof(HYDRA_REPORT_START_GAMEPAD));
-			sleep(2);
+			os_nanosleep(2 * 1000 * 1000 * 1000);
 		}
 		if (hs->data_hid != NULL) {
 			os_hid_destroy(hs->data_hid);
@@ -623,17 +562,17 @@ hydra_device_destroy(struct xrt_device *xdev)
  * Prober functions.
  *
  */
-#define SET_INPUT(NAME)                                                        \
-	do {                                                                   \
-		(hd->base.inputs[HYDRA_INDEX_##NAME].name =                    \
-		     XRT_INPUT_HYDRA_##NAME);                                  \
+#define SET_INPUT(NAME)                                                                                                \
+	do {                                                                                                           \
+		(hd->base.inputs[HYDRA_INDEX_##NAME].name = XRT_INPUT_HYDRA_##NAME);                                   \
 	} while (0)
 
 int
 hydra_found(struct xrt_prober *xp,
             struct xrt_prober_device **devices,
-            size_t num_devices,
+            size_t device_count,
             size_t index,
+            cJSON *attached_data,
             struct xrt_device **out_xdevs)
 {
 	struct xrt_prober_device *dev = devices[index];
@@ -653,10 +592,9 @@ hydra_found(struct xrt_prober *xp,
 
 	// Create the system
 	struct hydra_system *hs = U_TYPED_CALLOC(struct hydra_system);
-	hs->base.type = XRT_TRACKING_TYPE_NONE; // ??
-	snprintf(hs->base.name, XRT_TRACKING_NAME_LEN, "%s",
-	         "Razer Hydra magnetic tracking");
-	// Dummy transform from local space to base.
+	hs->base.type = XRT_TRACKING_TYPE_HYDRA;
+	snprintf(hs->base.name, XRT_TRACKING_NAME_LEN, "%s", "Razer Hydra magnetic tracking");
+	// Arbitrary static transform from local space to base.
 	hs->base.offset.position.y = 1.0f;
 	hs->base.offset.position.z = -0.25f;
 	hs->base.offset.orientation.w = 1.0f;
@@ -675,8 +613,7 @@ hydra_found(struct xrt_prober *xp,
 	hs->report_counter = -1;
 	hs->refs = 2;
 
-	hs->print_spew = debug_get_bool_option_hydra_spew();
-	hs->print_debug = debug_get_bool_option_hydra_debug();
+	hs->log_level = debug_get_log_option_hydra_log();
 
 	// Populate the individual devices
 	for (size_t i = 0; i < 2; ++i) {
@@ -687,8 +624,8 @@ hydra_found(struct xrt_prober *xp,
 		hd->base.get_tracked_pose = hydra_device_get_tracked_pose;
 		// hs->base.set_output = hydra_device_set_output;
 		hd->base.name = XRT_DEVICE_HYDRA;
-		snprintf(hd->base.str, XRT_DEVICE_NAME_LEN, "%s %i",
-		         "Razer Hydra Controller", (int)(i + 1));
+		snprintf(hd->base.str, XRT_DEVICE_NAME_LEN, "%s %i", "Razer Hydra Controller", (int)(i + 1));
+		snprintf(hd->base.serial, XRT_DEVICE_NAME_LEN, "%s %i", "Razer Hydra Controller", (int)(i + 1));
 		SET_INPUT(1_CLICK);
 		SET_INPUT(2_CLICK);
 		SET_INPUT(3_CLICK);
@@ -701,12 +638,15 @@ hydra_found(struct xrt_prober *xp,
 		SET_INPUT(POSE);
 		hd->index = i;
 		hd->sys = hs;
-		hd->print_spew = hs->print_spew;
-		hd->print_debug = hs->print_debug;
 
 		out_xdevs[i] = &(hd->base);
 	}
 
-	printf("Opened razer hydra!\n");
+	hs->devs[0]->base.orientation_tracking_supported = true;
+	hs->devs[0]->base.device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
+	hs->devs[1]->base.position_tracking_supported = true;
+	hs->devs[1]->base.device_type = XRT_DEVICE_TYPE_ANY_HAND_CONTROLLER;
+
+	U_LOG_I("Opened razer hydra!");
 	return 2;
 }

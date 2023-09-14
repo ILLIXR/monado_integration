@@ -5,7 +5,7 @@
  * @brief  Settings struct for compositor header.
  * @author Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
  * @author Jakob Bornecrantz <jakob@collabora.com>
- * @ingroup comp
+ * @ingroup comp_main
  */
 
 #pragma once
@@ -13,6 +13,9 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_compositor.h"
 #include "xrt/xrt_vulkan_includes.h"
+
+#include "util/u_logging.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,15 +27,19 @@ extern "C" {
  * be careful about which displays we attempt to acquire.
  * We may wish to allow user configuration to extend this list.
  */
-XRT_MAYBE_UNUSED static const char *NV_DIRECT_WHITELIST[] = {
-    "Sony SIE  HMD *08",
-    "HTC Corporation HTC-VIVE",
+XRT_MAYBE_UNUSED static const char *NV_DIRECT_ALLOWLIST[] = {
+    "Sony SIE  HMD *08",           // PSVR
+    "HTC Corporation HTC-VIVE",    // HTC Vive
+    "HTC Corporation VIVE Pro",    // HTC Vive Pro
+    "Oculus VR Inc. Rift",         // DK1, DK2 and CV1
+    "Valve Corporation Index HMD", // Valve Index
+    "Seiko/Epson SEC144A",         // Samsung Odyssey+
 };
 
 /*!
  * Window type to use.
  *
- * @ingroup comp
+ * @ingroup comp_main
  */
 enum window_type
 {
@@ -40,19 +47,25 @@ enum window_type
 	WINDOW_AUTO,
 	WINDOW_XCB,
 	WINDOW_WAYLAND,
+	WINDOW_DIRECT_WAYLAND,
 	WINDOW_DIRECT_RANDR,
 	WINDOW_DIRECT_NVIDIA,
+	WINDOW_ANDROID,
+	WINDOW_MSWIN,
+	WINDOW_VK_DISPLAY,
 };
 
 
 /*!
  * Settings for the compositor.
  *
- * @ingroup comp
+ * @ingroup comp_main
  */
 struct comp_settings
 {
 	int display;
+
+	bool use_compute;
 
 	VkFormat color_format;
 	VkColorSpaceKHR color_space;
@@ -61,41 +74,52 @@ struct comp_settings
 	//! Window type to use.
 	enum window_type window_type;
 
-	//! Distortion type to use.
-	enum xrt_distortion_model distortion_model;
+	//! display string forced by user or NULL
+	const char *nvidia_display;
 
-	uint32_t width;
-	uint32_t height;
+	//! vk display number to use when forcing vk_display
+	int vk_display;
 
 	struct
 	{
-		//! Display wireframe instead of solid triangles.
-		bool wireframe;
-	} debug;
+		uint32_t width;
+		uint32_t height;
+	} preferred;
+
+	//! Percentage to scale the viewport by.
+	double viewport_scale;
 
 	//! Not used with direct mode.
 	bool fullscreen;
 
-	//! Should we debug print a lot!
-	bool print_spew;
-
-	//! Should we debug print.
-	bool print_debug;
+	//! Logging level.
+	enum u_logging_level log_level;
 
 	//! Print information about available modes for direct mode.
 	bool print_modes;
 
-	//! Should we flip y axis for compositor buffers (for GL)
-	bool flip_y;
-
 	//! Nominal frame interval
 	uint64_t nominal_frame_interval_ns;
 
-	//! Enable vulkan validation for compositor
-	bool validate_vulkan;
+	//! Vulkan physical device selected by comp_settings_check_vulkan_caps
+	//! may be forced by user
+	int selected_gpu_index;
 
-	//! Run the compositor on this Vulkan physical device
-	int gpu_index;
+	//! Vulkan physical device index for clients to use, forced by user
+	int client_gpu_index;
+
+
+	//! Vulkan device UUID selected by comp_settings_check_vulkan_caps, valid across Vulkan instances
+	xrt_uuid_t selected_gpu_deviceUUID;
+
+	//! Vulkan device UUID to suggest to clients
+	xrt_uuid_t client_gpu_deviceUUID;
+
+	//! The Windows LUID for the GPU device suggested for D3D clients, never changes.
+	xrt_luid_t client_gpu_deviceLUID;
+
+	//! Whether @ref client_gpu_deviceLUID is valid
+	bool client_gpu_deviceLUID_valid;
 
 	//! Try to choose the mode with this index for direct mode
 	int desired_mode;
@@ -104,7 +128,7 @@ struct comp_settings
 /*!
  * Initialize the settings struct with either defaults or loaded setting.
  *
- * @ingroup comp
+ * @ingroup comp_main
  */
 void
 comp_settings_init(struct comp_settings *s, struct xrt_device *xdev);

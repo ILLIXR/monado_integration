@@ -8,11 +8,25 @@
  * @ingroup aux_util
  */
 
-#include "u_json.h"
-#include <assert.h>
+#include "util/u_json.h"
+#ifndef XRT_HAVE_SYSTEM_CJSON
+#if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+#endif
 
+#include "util/u_logging.h"
+
+#include <assert.h>
+#include <stdio.h>
+
+#ifndef XRT_HAVE_SYSTEM_CJSON
+#if defined(_MSC_VER) && !defined(_CRT_SECURE_NO_WARNINGS)
+#define _CRT_SECURE_NO_WARNINGS
+#endif
 // This includes the c file completely.
 #include "cjson/cJSON.c"
+#endif
 
 
 /*!
@@ -22,6 +36,12 @@ static inline const cJSON *
 get(const cJSON *json, const char *f)
 {
 	return cJSON_GetObjectItemCaseSensitive(json, f);
+}
+
+const cJSON *
+u_json_get(const cJSON *json, const char *f)
+{
+	return get(json, f);
 }
 
 bool
@@ -38,12 +58,31 @@ u_json_get_string_into_array(const cJSON *json, char *out_str, size_t max_size)
 
 	int ret = snprintf(out_str, max_size, "%s", json->valuestring);
 	if (ret < 0) {
-		return false;
-	} else if ((size_t)ret < max_size) {
-		return true;
-	} else {
+		U_LOG_E("Printing string failed: %d", ret);
 		return false;
 	}
+	if ((size_t)ret < max_size) {
+		return true;
+	}
+	U_LOG_E("String size %d is bigger than available %zu", ret, max_size);
+	return false;
+}
+
+bool
+u_json_get_bool(const cJSON *json, bool *out_bool)
+{
+	assert(out_bool != NULL);
+
+	if (!json) {
+		return false;
+	}
+	if (!cJSON_IsBool(json)) {
+		return false;
+	}
+
+	*out_bool = cJSON_IsTrue(json);
+
+	return true;
 }
 
 bool
@@ -121,6 +160,78 @@ u_json_get_vec3(const cJSON *json, struct xrt_vec3 *out_vec3)
 }
 
 bool
+u_json_get_vec3_array(const cJSON *json, struct xrt_vec3 *out_vec3)
+{
+	assert(out_vec3 != NULL);
+
+	if (!json) {
+		return false;
+	}
+	if (!cJSON_IsArray(json)) {
+		return false;
+	}
+
+	if (cJSON_GetArraySize(json) != 3) {
+		return false;
+	}
+
+	float array[3] = {0, 0, 0};
+	const cJSON *item = NULL;
+	size_t i = 0;
+	cJSON_ArrayForEach(item, json)
+	{
+		assert(cJSON_IsNumber(item));
+		array[i] = (float)item->valuedouble;
+		++i;
+		if (i == 3) {
+			break;
+		}
+	}
+
+	out_vec3->x = array[0];
+	out_vec3->y = array[1];
+	out_vec3->z = array[2];
+
+	return true;
+}
+
+bool
+u_json_get_vec3_f64_array(const cJSON *json, struct xrt_vec3_f64 *out_vec3)
+{
+	assert(out_vec3 != NULL);
+
+	if (!json) {
+		return false;
+	}
+	if (!cJSON_IsArray(json)) {
+		return false;
+	}
+
+	if (cJSON_GetArraySize(json) != 3) {
+		return false;
+	}
+
+	double array[3] = {0, 0, 0};
+	const cJSON *item = NULL;
+	size_t i = 0;
+	cJSON_ArrayForEach(item, json)
+	{
+		assert(cJSON_IsNumber(item));
+		array[i] = item->valuedouble;
+		++i;
+		if (i == 3) {
+			break;
+		}
+	}
+
+	out_vec3->x = array[0];
+	out_vec3->y = array[1];
+	out_vec3->z = array[2];
+
+	return true;
+}
+
+bool
 u_json_get_quat(const cJSON *json, struct xrt_quat *out_quat)
 {
 	assert(out_quat != NULL);
@@ -151,10 +262,61 @@ u_json_get_quat(const cJSON *json, struct xrt_quat *out_quat)
 	return true;
 }
 
+// note: you should be using "position" and "orientation" and lower-case xyz(w)
+bool
+u_json_get_pose(const cJSON *json, struct xrt_pose *out_pose)
+{
+	struct xrt_pose tmp;
+
+	bool good = true;
+	good = good && u_json_get_vec3(u_json_get(json, "position"), &tmp.position);
+	good = good && u_json_get_quat(u_json_get(json, "orientation"), &tmp.orientation);
+
+	if (good) {
+		*out_pose = tmp;
+	}
+	return good;
+}
+
+bool
+u_json_get_pose_permissive(const cJSON *json, struct xrt_pose *out_pose)
+{
+	struct xrt_pose tmp;
+
+	const char *position_names[] = {"position", "translation", "location", "pos", "loc"};
+	const char *orientation_names[] = {"orientation", "rotation", "rot"};
+
+	bool found_position = false;
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(position_names); i++) {
+		found_position = u_json_get_vec3(u_json_get(json, position_names[i]), &tmp.position);
+		if (found_position) {
+			break;
+		}
+	}
+	if (!found_position) {
+		return false;
+	}
+
+	bool found_orientation = false;
+
+	for (uint32_t i = 0; i < ARRAY_SIZE(orientation_names); i++) {
+		found_orientation = u_json_get_vec3(u_json_get(json, orientation_names[i]), &tmp.position);
+		if (found_orientation) {
+			break;
+		}
+	}
+	if (!found_orientation) {
+		return false;
+	}
+
+
+	return true;
+}
+
+
 size_t
-u_json_get_float_array(const cJSON *json_array,
-                       float *out_array,
-                       size_t max_size)
+u_json_get_float_array(const cJSON *json_array, float *out_array, size_t max_size)
 {
 	assert(out_array != NULL);
 
@@ -174,9 +336,9 @@ u_json_get_float_array(const cJSON *json_array,
 		}
 
 		if (!u_json_get_float(elt, &out_array[i])) {
-			fprintf(stderr,
-			        "warning: u_json_get_float_array got a "
-			        "non-number in a numeric array");
+			U_LOG_W(
+			    "u_json_get_float_array got a non-number in a "
+			    "numeric array");
 			return i;
 		}
 
@@ -187,9 +349,7 @@ u_json_get_float_array(const cJSON *json_array,
 }
 
 size_t
-u_json_get_double_array(const cJSON *json_array,
-                        double *out_array,
-                        size_t max_size)
+u_json_get_double_array(const cJSON *json_array, double *out_array, size_t max_size)
 {
 	assert(out_array != NULL);
 
@@ -209,9 +369,9 @@ u_json_get_double_array(const cJSON *json_array,
 		}
 
 		if (!u_json_get_double(elt, &out_array[i])) {
-			fprintf(stderr,
-			        "warning: u_json_get_double_array got a "
-			        "non-number in a numeric array");
+			U_LOG_W(
+			    "u_json_get_double_array got a non-number in a "
+			    "numeric array");
 			return i;
 		}
 
@@ -219,4 +379,70 @@ u_json_get_double_array(const cJSON *json_array,
 	}
 
 	return i;
+}
+
+size_t
+u_json_get_int_array(const cJSON *json_array, int *out_array, size_t max_size)
+{
+	assert(out_array != NULL);
+
+	if (!json_array) {
+		return 0;
+	}
+	if (!cJSON_IsArray(json_array)) {
+		return 0;
+	}
+
+	size_t i = 0;
+	const cJSON *elt;
+	cJSON_ArrayForEach(elt, json_array)
+	{
+		if (i >= max_size) {
+			break;
+		}
+
+		if (!u_json_get_int(elt, &out_array[i])) {
+			U_LOG_W(
+			    "u_json_get_int got a non-number in a "
+			    "numeric array");
+			return i;
+		}
+
+		i++;
+	}
+
+	return i;
+}
+
+bool
+u_json_get_matrix_3x3(const cJSON *json, struct xrt_matrix_3x3 *out_matrix)
+{
+	assert(out_matrix != NULL);
+
+	if (!json) {
+		return false;
+	}
+	if (cJSON_GetArraySize(json) != 3) {
+		return false;
+	}
+
+	size_t total = 0;
+	const cJSON *vec = NULL;
+	cJSON_ArrayForEach(vec, json)
+	{
+		assert(cJSON_GetArraySize(vec) == 3);
+		const cJSON *elem = NULL;
+		cJSON_ArrayForEach(elem, vec)
+		{
+			// Just in case.
+			if (total >= 9) {
+				break;
+			}
+
+			assert(cJSON_IsNumber(elem));
+			out_matrix->v[total++] = (float)elem->valuedouble;
+		}
+	}
+
+	return true;
 }

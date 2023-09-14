@@ -39,12 +39,18 @@ struct xrt_frame
 	uint64_t timestamp;
 	uint64_t source_timestamp;
 	uint64_t source_sequence; //!< sequence id
-	uint64_t source_id; //!< Which @ref xrt_fs this frame originated from.
+	uint64_t source_id;       //!< Which @ref xrt_fs this frame originated from.
 };
 
 
 /*!
+ * @interface xrt_frame_sink
+ *
  * A object that is sent frames.
+ *
+ * All objects that implement @ref xrt_frame_sink **must** also implement @ref
+ * xrt_frame_node, and should take an @ref xrt_frame_context to register
+ * themselves with in their constructor.
  *
  * @ingroup xrt_iface
  */
@@ -53,11 +59,25 @@ struct xrt_frame_sink
 	/*!
 	 * Push a frame into the sink.
 	 */
-	void (*push_frame)(struct xrt_frame_sink *sink,
-	                   struct xrt_frame *frame);
+	void (*push_frame)(struct xrt_frame_sink *sink, struct xrt_frame *frame);
 };
 
 /*!
+ * @copydoc xrt_frame_sink::push_frame
+ *
+ * Helper for calling through the function pointer.
+ *
+ * @public @memberof xrt_frame_sink
+ */
+static inline void
+xrt_sink_push_frame(struct xrt_frame_sink *sink, struct xrt_frame *frame)
+{
+	sink->push_frame(sink, frame);
+}
+
+/*!
+ * @interface xrt_frame_node
+ *
  * A interface object used for destroying a frame graph.
  *
  * @see container_of
@@ -97,11 +117,17 @@ struct xrt_frame_context
  */
 
 /*!
- * Update the reference count on a frame.
+ * Update the reference counts on frame(s).
  *
+ * @param[in,out] dst Pointer to a object reference: if the object reference is
+ *                non-null will decrement its counter. The reference that
+ *                @p dst points to will be set to @p src.
+ * @param[in] src New object for @p dst to refer to (may be null).
+ *                If non-null, will have its refcount increased.
  * @ingroup xrt_iface
+ * @relates xrt_frame
  */
-XRT_MAYBE_UNUSED static void
+static inline void
 xrt_frame_reference(struct xrt_frame **dst, struct xrt_frame *src)
 {
 	struct xrt_frame *old_dst = *dst;
@@ -126,22 +152,21 @@ xrt_frame_reference(struct xrt_frame **dst, struct xrt_frame *src)
 /*!
  * Add a node to a context.
  *
- * @ingroup xrt_iface
+ * @public @memberof xrt_frame_context
  */
-XRT_MAYBE_UNUSED static void
-xrt_frame_context_add(struct xrt_frame_context *xfctx,
-                      struct xrt_frame_node *node)
+static inline void
+xrt_frame_context_add(struct xrt_frame_context *xfctx, struct xrt_frame_node *node)
 {
 	node->next = xfctx->nodes;
 	xfctx->nodes = node;
 }
 
 /*!
- * Destroy all child nodes, but free the context itself.
+ * Destroy all child nodes, but do not free the context itself.
  *
- * @ingroup xrt_iface
+ * @public @memberof xrt_frame_context
  */
-XRT_MAYBE_UNUSED static void
+static inline void
 xrt_frame_context_destroy_nodes(struct xrt_frame_context *xfctx)
 {
 	struct xrt_frame_node *next = NULL;

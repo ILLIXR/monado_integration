@@ -1,16 +1,8 @@
-# Copyright 2019, Collabora, Ltd.
+# Copyright 2019-2021, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
-include_directories(
-	${CMAKE_CURRENT_SOURCE_DIR}/../../include
-	${CMAKE_CURRENT_SOURCE_DIR}/../../auxiliary
-	${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
-	${CMAKE_CURRENT_SOURCE_DIR}/../../../external
-	)
-
-set(PROBER_INCLUDES)
-
-set(PROBER_SOURCE_FILES
+add_library(
+	st_prober STATIC
 	p_documentation.h
 	p_dump.c
 	p_prober.c
@@ -18,48 +10,43 @@ set(PROBER_SOURCE_FILES
 	p_tracking.c
 	)
 
-# Add ILLIXR
-
-if (BUILD_WITH_ILLIXR)
-	list(APPEND PROBER_SOURCE_FILES
-		p_illixr.c
-		)
-endif()
+target_link_libraries(st_prober PUBLIC xrt-interfaces)
+target_link_libraries(
+	st_prober
+	PRIVATE
+		drv_includes
+		drv_multi
+		aux_util
+		aux_os
+		aux_tracking
+	)
 
 # Add libudev
-if(BUILD_WITH_LIBUDEV)
-	list(APPEND PROBER_SOURCE_FILES
-		p_udev.c
-		)
-	list(APPEND PROBER_INCLUDES
-		${LIBUDEV_INCLUDES}
-		)
+if(XRT_HAVE_LIBUDEV)
+	target_sources(st_prober PRIVATE p_udev.c)
+	target_include_directories(st_prober PRIVATE ${UDEV_INCLUDE_DIRS})
+	target_link_libraries(st_prober PRIVATE ${UDEV_LIBRARIES})
 endif()
 
 # Add libusb
-if(BUILD_WITH_LIBUSB)
-	list(APPEND PROBER_SOURCE_FILES
-		p_libusb.c
-		)
-	list(APPEND PROBER_INCLUDES
-		${LIBUSB_INCLUDES}
-		)
+if(XRT_HAVE_LIBUSB)
+	target_sources(st_prober PRIVATE p_libusb.c)
+	target_include_directories(st_prober PUBLIC ${LIBUSB1_INCLUDE_DIRS})
+	target_link_libraries(st_prober PRIVATE ${LIBUSB1_LIBRARIES})
 endif()
 
 # Add libuvc
-if(BUILD_WITH_LIBUVC)
-	list(APPEND PROBER_SOURCE_FILES
-		p_libuvc.c
-		)
-	list(APPEND PROBER_INCLUDES
-		${LIBUVC_INCLUDES}
-		)
+if(XRT_HAVE_LIBUVC)
+	target_sources(st_prober PRIVATE p_libuvc.c)
+	target_include_directories(st_prober PRIVATE ${LIBUVC_INCLUDES})
+	target_link_libraries(st_prober PRIVATE ${LIBUVC_LIBRARIES})
 endif()
 
-# Use OBJECT to not create a archive, since it just gets in the way.
-add_library(st_prober OBJECT ${PROBER_SOURCE_FILES})
+if(XRT_HAVE_V4L2)
+	# Uses v4l2_fs_create
+	target_link_libraries(st_prober PRIVATE drv_v4l2)
+endif()
 
-target_include_directories(st_prober
-	PRIVATE
-	${PROBER_INCLUDES}
-	)
+if(XRT_BUILD_DRIVER_VF)
+	target_link_libraries(st_prober PRIVATE drv_vf)
+endif()

@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "common/comp_vk.h"
+#include "vk/vk_helpers.h"
 #include "xrt/xrt_gfx_vk.h"
 
 #ifdef __cplusplus
@@ -32,24 +32,47 @@ struct client_vk_compositor;
  * Almost a one to one mapping to a OpenXR swapchain.
  *
  * @ingroup comp_client
+ * @implements xrt_swapchain_vk
  */
 struct client_vk_swapchain
 {
 	struct xrt_swapchain_vk base;
-	struct xrt_swapchain_fd *xscfd;
+
+	//! Owning reference to the backing native swapchain.
+	struct xrt_swapchain_native *xscn;
+
+	//! Non-owning reference to our parent compositor.
 	struct client_vk_compositor *c;
+
+	// Memory
+	VkDeviceMemory mems[XRT_MAX_SWAPCHAIN_IMAGES];
+
+	// Prerecorded swapchain image ownership/layout transition barriers
+	VkCommandBuffer acquire[XRT_MAX_SWAPCHAIN_IMAGES];
+	VkCommandBuffer release[XRT_MAX_SWAPCHAIN_IMAGES];
 };
 
 /*!
+ * @class client_vk_compositor
+ *
  * Wraps the real compositor providing a Vulkan based interface.
  *
  * @ingroup comp_client
+ * @implements xrt_compositor_vk
  */
 struct client_vk_compositor
 {
 	struct xrt_compositor_vk base;
 
-	struct xrt_compositor_fd *xcfd;
+	//! Owning reference to the backing native compositor
+	struct xrt_compositor_native *xcn;
+
+	struct
+	{
+		VkSemaphore semaphore;
+		struct xrt_compositor_semaphore *xcsem;
+		uint64_t value;
+	} sync;
 
 	struct vk_bundle vk;
 };
@@ -61,39 +84,24 @@ struct client_vk_compositor
  *
  */
 
-/*!
- * Convinence function to convert a xrt_swapchain to a client_vk_swapchain.
- *
- * @ingroup comp_client
- */
-XRT_MAYBE_UNUSED static struct client_vk_swapchain *
-client_vk_swapchain(struct xrt_swapchain *xsc)
-{
-	return (struct client_vk_swapchain *)xsc;
-}
-
-/*!
- * Convinence function to convert a xrt_compositor to a client_vk_compositor.
- *
- * @ingroup comp_client
- */
-XRT_MAYBE_UNUSED static struct client_vk_compositor *
-client_vk_compositor(struct xrt_compositor *xc)
-{
-	return (struct client_vk_compositor *)xc;
-}
 
 /*!
  * Create a new client_vk_compositor.
  *
- * @ingroup comp_client
+ * Takes ownership of provided xcn.
+ *
+ * @public @memberof client_vk_compositor
+ * @see xrt_compositor_native
  */
 struct client_vk_compositor *
-client_vk_compositor_create(struct xrt_compositor_fd *xcfd,
+client_vk_compositor_create(struct xrt_compositor_native *xcn,
                             VkInstance instance,
                             PFN_vkGetInstanceProcAddr getProc,
                             VkPhysicalDevice physicalDevice,
                             VkDevice device,
+                            bool external_fence_fd_enabled,
+                            bool external_semaphore_fd_enabled,
+                            bool timeline_semaphore_enabled,
                             uint32_t queueFamilyIndex,
                             uint32_t queueIndex);
 

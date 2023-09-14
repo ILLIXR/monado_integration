@@ -4,18 +4,27 @@
  * @file
  * @brief  OpenGL functions to drive the gui.
  * @author Jakob Bornecrantz <jakob@collabora.com>
+ * @author Moses Turner <moses@collabora.com>
  * @ingroup gui
  */
 
 #include "xrt/xrt_frame.h"
 #include "util/u_misc.h"
+#include "util/u_logging.h"
+
 #include "ogl/ogl_api.h"
 
 #include "gui_common.h"
 
 #include <pthread.h>
+#include <limits.h>
 
 
+/*!
+ * An @ref xrt_frame_sink that shows sunk frames in the GUI.
+ * @implements xrt_frame_sink
+ * @implements xrt_frame_node
+ */
 struct gui_ogl_sink
 {
 	struct gui_ogl_texture tex;
@@ -56,6 +65,9 @@ break_apart(struct xrt_frame_node *node)
 	pthread_mutex_lock(&s->mutex);
 	s->running = false;
 	pthread_mutex_unlock(&s->mutex);
+
+	// Release any frame waiting for upload.
+	xrt_frame_reference(&s->frame, NULL);
 }
 
 static void
@@ -71,20 +83,29 @@ destroy(struct xrt_frame_node *node)
 }
 
 static void
-update_r8g8b8(struct gui_ogl_sink *s, GLint w, GLint h, uint8_t *data)
+update_r8g8b8x8(struct gui_ogl_sink *s, GLint w, GLint h, GLint stride, uint8_t *data)
 {
 	glBindTexture(GL_TEXTURE_2D, s->tex.id);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGB,
-	             GL_UNSIGNED_BYTE, data);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, stride / 4);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 static void
-update_l8(struct gui_ogl_sink *s, GLint w, GLint h, uint8_t *data)
+update_r8g8b8(struct gui_ogl_sink *s, GLint w, GLint h, GLint stride, uint8_t *data)
 {
 	glBindTexture(GL_TEXTURE_2D, s->tex.id);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED,
-	             GL_UNSIGNED_BYTE, data);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, stride / 3);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+static void
+update_l8(struct gui_ogl_sink *s, GLint w, GLint h, GLint stride, uint8_t *data)
+{
+	glBindTexture(GL_TEXTURE_2D, s->tex.id);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
 	GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
 	glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -106,11 +127,17 @@ gui_ogl_sink_update(struct gui_ogl_texture *tex)
 		return;
 	}
 
-	GLint w, h;
-	uint8_t *data;
+	// To large stride for GLint.
+	if (frame->stride > INT_MAX) {
+		U_LOG_E("Stride unreasonable large!");
+		return;
+	}
 
-	w = frame->width;
-	h = frame->height;
+
+	GLint w = frame->width;
+	GLint h = frame->height;
+	GLint stride = (GLint)frame->stride;
+	uint8_t *data = frame->data;
 
 	if (tex->w != (uint32_t)w || tex->h != (uint32_t)h) {
 		tex->w = w;
@@ -123,11 +150,12 @@ gui_ogl_sink_update(struct gui_ogl_texture *tex)
 	}
 
 	tex->seq = frame->source_sequence;
-	data = frame->data;
 
 	switch (frame->format) {
-	case XRT_FORMAT_R8G8B8: update_r8g8b8(s, w, h, data); break;
-	case XRT_FORMAT_L8: update_l8(s, w, h, data); break;
+	case XRT_FORMAT_R8G8B8: update_r8g8b8(s, w, h, stride, data); break;
+	case XRT_FORMAT_R8G8B8A8:
+	case XRT_FORMAT_R8G8B8X8: update_r8g8b8x8(s, w, h, stride, data); break;
+	case XRT_FORMAT_L8: update_l8(s, w, h, stride, data); break;
 	default: break;
 	}
 
@@ -135,9 +163,7 @@ gui_ogl_sink_update(struct gui_ogl_texture *tex)
 }
 
 struct gui_ogl_texture *
-gui_ogl_sink_create(const char *name,
-                    struct xrt_frame_context *xfctx,
-                    struct xrt_frame_sink **out_sink)
+gui_ogl_sink_create(const char *name, struct xrt_frame_context *xfctx, struct xrt_frame_sink **out_sink)
 {
 	struct gui_ogl_sink *s = U_TYPED_CALLOC(struct gui_ogl_sink);
 	int ret = 0;
@@ -165,10 +191,11 @@ gui_ogl_sink_create(const char *name,
 	GLint h = 1;
 	struct xrt_colour_rgb_u8 pink = {255, 0, 255};
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGB,
-	             GL_UNSIGNED_BYTE, &pink.r);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, &pink.r);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	xrt_frame_context_add(xfctx, &s->node);
 
 	*out_sink = &s->sink;
 

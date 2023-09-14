@@ -5,49 +5,19 @@
  * @brief  Compositor window header.
  * @author Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
  * @author Jakob Bornecrantz <jakob@collabora.com>
- * @ingroup comp
+ * @ingroup comp_main
  */
 
 #pragma once
 
-#include "common/comp_vk_swapchain.h"
+#include "main/comp_target_swapchain.h"
 #include "main/comp_compositor.h"
+
+#include "xrt/xrt_config_os.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-
-/*
- *
- * Structs
- *
- */
-
-/*!
- * A output device or a window, often directly connected to the device.
- *
- * @ingroup comp
- */
-struct comp_window
-{
-	//! Owning compositor.
-	struct comp_compositor *c;
-
-	//! Name of the window system.
-	const char *name;
-
-	//! Helper struct.
-	struct vk_swapchain swapchain;
-
-	void (*destroy)(struct comp_window *w);
-	void (*flush)(struct comp_window *w);
-	bool (*init)(struct comp_window *w);
-	bool (*init_swapchain)(struct comp_window *w,
-	                       uint32_t width,
-	                       uint32_t height);
-	void (*update_window_title)(struct comp_window *w, const char *title);
-};
 
 
 /*
@@ -60,9 +30,10 @@ struct comp_window
 /*!
  * Create a xcb window.
  *
- * @ingroup comp
+ * @ingroup comp_main
+ * @public @memberof comp_window_xcb
  */
-struct comp_window *
+struct comp_target *
 comp_window_xcb_create(struct comp_compositor *c);
 #endif
 
@@ -70,22 +41,76 @@ comp_window_xcb_create(struct comp_compositor *c);
 /*!
  * Create a wayland window.
  *
+ * @ingroup comp_main
+ * @public @memberof comp_window_wayland
+ */
+struct comp_target *
+comp_window_wayland_create(struct comp_compositor *c);
+
+/*!
+ * Create a direct surface to a HMD using Wayland.
+ *
  * @ingroup comp
  */
-struct comp_window *
-comp_window_wayland_create(struct comp_compositor *c);
+struct comp_target *
+comp_window_direct_wayland_create(struct comp_compositor *c);
+
 #endif
 
 #ifdef VK_USE_PLATFORM_XLIB_XRANDR_EXT
 /*!
- * Create a direct surface to a HMD.
+ * Create a direct surface to an HMD over RandR.
  *
- * @ingroup comp
+ * @ingroup comp_main
+ * @public @memberof comp_window_direct_randr
  */
-struct comp_window *
-comp_window_direct_create(struct comp_compositor *c);
+struct comp_target *
+comp_window_direct_randr_create(struct comp_compositor *c);
+
+/*!
+ * Create a direct surface to an HMD on NVIDIA.
+ *
+ * @ingroup comp_main
+ * @public @memberof comp_window_direct_nvidia
+ */
+struct comp_target *
+comp_window_direct_nvidia_create(struct comp_compositor *c);
 #endif
 
+/*!
+ * Create a direct surface to an HMD on VkDisplay.
+ *
+ * @ingroup comp_main
+ * @public @memberof comp_window_direct_vk_display
+ */
+struct comp_target *
+comp_window_vk_display_create(struct comp_compositor *c);
+
+#ifdef XRT_OS_ANDROID
+
+/*!
+ * Create a surface to an HMD on Android.
+ *
+ * @ingroup comp_main
+ * @public @memberof comp_window_android
+ */
+struct comp_target *
+comp_window_android_create(struct comp_compositor *c);
+
+#endif // XRT_OS_ANDROID
+
+#ifdef XRT_OS_WINDOWS
+
+/*!
+ * Create a rendering window on Windows.
+ *
+ * @ingroup comp_main
+ * @public @memberof comp_window_mswin
+ */
+struct comp_target *
+comp_window_mswin_create(struct comp_compositor *c);
+
+#endif // XRT_OS_WINDOWS
 
 #ifdef __cplusplus
 }

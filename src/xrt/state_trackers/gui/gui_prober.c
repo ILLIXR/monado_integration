@@ -1,4 +1,4 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2022, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -7,6 +7,8 @@
  */
 
 #include "xrt/xrt_prober.h"
+#include "xrt/xrt_instance.h"
+#include "xrt/xrt_system.h"
 #include "util/u_time.h"
 #include "gui_common.h"
 
@@ -34,20 +36,26 @@ do_exit(struct gui_program *p, int ret)
 int
 gui_prober_init(struct gui_program *p)
 {
-	int ret = 0;
-
-	p->timekeeping = time_state_create();
+	xrt_result_t xret;
 
 	// Initialize the prober.
-	ret = xrt_prober_create(&p->xp);
-	if (ret != 0) {
-		return do_exit(p, ret);
+	xret = xrt_instance_create(NULL, &p->instance);
+	if (xret != 0) {
+		return do_exit(p, -1);
 	}
 
-	// Need to prime the prober with devices before dumping and listing.
-	ret = xrt_prober_probe(p->xp);
-	if (ret != 0) {
-		return do_exit(p, ret);
+	// Still need the prober to get video devices.
+	xret = xrt_instance_get_prober(p->instance, &p->xp);
+	if (xret != XRT_SUCCESS) {
+		return do_exit(p, -1);
+	}
+
+	if (p->xp != NULL) {
+		// Need to prime the prober with devices before dumping and listing.
+		xret = xrt_prober_probe(p->xp);
+		if (xret != XRT_SUCCESS) {
+			return do_exit(p, -1);
+		}
 	}
 
 	return 0;
@@ -56,12 +64,9 @@ gui_prober_init(struct gui_program *p)
 int
 gui_prober_select(struct gui_program *p)
 {
-	int ret;
-
-	// Multiple devices can be found.
-	ret = xrt_prober_select(p->xp, p->xdevs, NUM_XDEVS);
-	if (ret != 0) {
-		return ret;
+	xrt_result_t xret = xrt_instance_create_system(p->instance, &p->xsysd, NULL);
+	if (xret != XRT_SUCCESS) {
+		return -1;
 	}
 
 	return 0;
@@ -70,36 +75,22 @@ gui_prober_select(struct gui_program *p)
 void
 gui_prober_update(struct gui_program *p)
 {
-	// We haven't been initialized
-	if (p->timekeeping == NULL) {
+	if (!p->xsysd) {
 		return;
 	}
 
-	time_state_get_now_and_update(p->timekeeping);
-
-	for (size_t i = 0; i < NUM_XDEVS; i++) {
-		if (p->xdevs[i] == NULL) {
+	for (size_t i = 0; i < p->xsysd->xdev_count; i++) {
+		if (p->xsysd->xdevs[i] == NULL) {
 			continue;
 		}
-
-		p->xdevs[i]->update_inputs(p->xdevs[i], p->timekeeping);
+		xrt_device_update_inputs(p->xsysd->xdevs[i]);
 	}
 }
 
 void
 gui_prober_teardown(struct gui_program *p)
 {
-	for (size_t i = 0; i < NUM_XDEVS; i++) {
-		if (p->xdevs[i] == NULL) {
-			continue;
-		}
+	xrt_system_devices_destroy(&p->xsysd);
 
-		p->xdevs[i]->destroy(p->xdevs[i]);
-		p->xdevs[i] = NULL;
-	}
-
-	// Does null checking and sets to null.
-	time_state_destroy(&p->timekeeping);
-
-	xrt_prober_destroy(&p->xp);
+	xrt_instance_destroy(&p->instance);
 }

@@ -14,13 +14,15 @@
 
 #include "xrt/xrt_prober.h"
 
+#include "vive_device.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
 /*!
- * @defgroup drv_vive Vive and Index Driver
+ * @defgroup drv_vive HTC Vive and Valve Index driver
  * @ingroup drv
  *
  * @brief Driver for the HTC Vive and Valve Index family of HMDs.
@@ -35,18 +37,41 @@ extern "C" {
 #define VIVE_PRO_MAINBOARD_PID 0x0309
 #define VIVE_PRO_LHR_PID 0x2300
 
+#define VIVE_WATCHMAN_DONGLE 0x2101
+#define VIVE_WATCHMAN_DONGLE_GEN2 0x2102
+
 
 /*!
  * Probing function for Vive devices.
  *
  * @ingroup drv_vive
+ * @see xrt_prober_found_func_t
  */
 int
 vive_found(struct xrt_prober *xp,
            struct xrt_prober_device **devices,
-           size_t num_devices,
+           size_t device_count,
            size_t index,
+           cJSON *attached_data,
+           struct vive_tracking_status tstatus,
+           struct vive_source *vs,
+           struct vive_config **out_vive_config,
            struct xrt_device **out_xdev);
+
+
+/*!
+ * Probing function for HTC Vive and Valve Index controllers.
+ *
+ * @ingroup drv_vive
+ * @see xrt_prober_found_func_t
+ */
+int
+vive_controller_found(struct xrt_prober *xp,
+                      struct xrt_prober_device **devices,
+                      size_t device_count,
+                      size_t index,
+                      cJSON *attached_data,
+                      struct xrt_device **out_xdevs);
 
 /*!
  * @dir drivers/vive

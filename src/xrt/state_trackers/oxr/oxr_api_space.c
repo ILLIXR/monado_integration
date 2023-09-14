@@ -1,4 +1,4 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2020, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -7,14 +7,12 @@
  * @ingroup oxr_api
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "xrt/xrt_compiler.h"
 
-#include "math/m_api.h"
 #include "util/u_debug.h"
+#include "util/u_trace_marker.h"
+
+#include "math/m_api.h"
 
 #include "oxr_objects.h"
 #include "oxr_logger.h"
@@ -23,25 +21,27 @@
 #include "oxr_api_funcs.h"
 #include "oxr_api_verify.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
+
 
 XrResult
-oxr_xrCreateActionSpace(XrSession session,
-                        const XrActionSpaceCreateInfo *createInfo,
-                        XrSpace *space)
+oxr_xrCreateActionSpace(XrSession session, const XrActionSpaceCreateInfo *createInfo, XrSpace *space)
 {
+	OXR_TRACE_MARKER();
+
 	struct oxr_session *sess;
 	struct oxr_action *act;
 	struct oxr_logger log;
-	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess,
-	                                "xrCreateActionSpace");
-	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo,
-	                                 XR_TYPE_ACTION_SPACE_CREATE_INFO);
+	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess, "xrCreateActionSpace");
+	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo, XR_TYPE_ACTION_SPACE_CREATE_INFO);
 	OXR_VERIFY_POSE(&log, createInfo->poseInActionSpace);
 	OXR_VERIFY_ACTION_NOT_NULL(&log, createInfo->action, act);
 
 	struct oxr_space *spc;
-	XrResult ret =
-	    oxr_space_action_create(&log, sess, act->key, createInfo, &spc);
+	XrResult ret = oxr_space_action_create(&log, sess, act->act_key, createInfo, &spc);
 	if (ret != XR_SUCCESS) {
 		return ret;
 	}
@@ -63,44 +63,56 @@ oxr_xrEnumerateReferenceSpaces(XrSession session,
                                uint32_t *spaceCountOutput,
                                XrReferenceSpaceType *spaces)
 {
+	OXR_TRACE_MARKER();
+
 	struct oxr_session *sess;
 	struct oxr_logger log;
-	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess,
-	                                "xrEnumerateReferenceSpaces");
+	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess, "xrEnumerateReferenceSpaces");
 
-	OXR_TWO_CALL_HELPER(&log, spaceCapacityInput, spaceCountOutput, spaces,
-	                    ARRAY_SIZE(session_spaces), session_spaces,
-	                    oxr_session_success_result(sess));
+	OXR_TWO_CALL_HELPER(&log, spaceCapacityInput, spaceCountOutput, spaces, ARRAY_SIZE(session_spaces),
+	                    session_spaces, oxr_session_success_result(sess));
 }
 
 XrResult
-oxr_xrGetReferenceSpaceBoundsRect(XrSession session,
-                                  XrReferenceSpaceType referenceSpaceType,
-                                  XrExtent2Df *bounds)
+oxr_xrGetReferenceSpaceBoundsRect(XrSession session, XrReferenceSpaceType referenceSpaceType, XrExtent2Df *bounds)
 {
+	OXR_TRACE_MARKER();
+
 	struct oxr_session *sess;
 	struct oxr_logger log;
-	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess,
-	                                "xrGetReferenceSpaceBoundsRect");
+	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess, "xrGetReferenceSpaceBoundsRect");
+	OXR_VERIFY_ARG_NOT_NULL(&log, bounds);
 
-	//! @todo Implement
-	return oxr_error(&log, XR_ERROR_FUNCTION_UNSUPPORTED,
-	                 " not implemented");
+
+	switch (referenceSpaceType) {
+	case XR_REFERENCE_SPACE_TYPE_VIEW:
+	case XR_REFERENCE_SPACE_TYPE_LOCAL:
+	case XR_REFERENCE_SPACE_TYPE_STAGE: break;
+	default:
+		return oxr_error(&log, XR_ERROR_VALIDATION_FAILURE,
+		                 "(referenceSpaceType == 0x%08x) is not a "
+		                 "valid XrReferenceSpaceType",
+		                 referenceSpaceType);
+	}
+
+	bounds->width = 0.0;
+	bounds->height = 0.0;
+
+	// Silently return that the bounds aren't available.
+	return XR_SPACE_BOUNDS_UNAVAILABLE;
 }
 
 XrResult
-oxr_xrCreateReferenceSpace(XrSession session,
-                           const XrReferenceSpaceCreateInfo *createInfo,
-                           XrSpace *out_space)
+oxr_xrCreateReferenceSpace(XrSession session, const XrReferenceSpaceCreateInfo *createInfo, XrSpace *out_space)
 {
+	OXR_TRACE_MARKER();
+
 	XrResult ret;
 	struct oxr_session *sess;
-	struct oxr_space *spc;
+	struct oxr_space *spc = NULL;
 	struct oxr_logger log;
-	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess,
-	                                "xrCreateReferenceSpace");
-	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo,
-	                                 XR_TYPE_REFERENCE_SPACE_CREATE_INFO);
+	OXR_VERIFY_SESSION_AND_INIT_LOG(&log, session, sess, "xrCreateReferenceSpace");
+	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, createInfo, XR_TYPE_REFERENCE_SPACE_CREATE_INFO);
 	OXR_VERIFY_POSE(&log, createInfo->poseInReferenceSpace);
 
 	ret = oxr_space_reference_create(&log, sess, createInfo, &spc);
@@ -114,18 +126,22 @@ oxr_xrCreateReferenceSpace(XrSession session,
 }
 
 XrResult
-oxr_xrLocateSpace(XrSpace space,
-                  XrSpace baseSpace,
-                  XrTime time,
-                  XrSpaceLocation *location)
+oxr_xrLocateSpace(XrSpace space, XrSpace baseSpace, XrTime time, XrSpaceLocation *location)
 {
+	OXR_TRACE_MARKER();
+
 	struct oxr_space *spc;
 	struct oxr_space *baseSpc;
 	struct oxr_logger log;
 	OXR_VERIFY_SPACE_AND_INIT_LOG(&log, space, spc, "xrLocateSpace");
 	OXR_VERIFY_SPACE_NOT_NULL(&log, baseSpace, baseSpc);
-	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, location,
-	                                 XR_TYPE_SPACE_LOCATION);
+	OXR_VERIFY_ARG_TYPE_AND_NOT_NULL(&log, location, XR_TYPE_SPACE_LOCATION);
+
+	OXR_VERIFY_ARG_TYPE_CAN_BE_NULL(&log, ((XrSpaceVelocity *)location->next), XR_TYPE_SPACE_VELOCITY);
+
+	if (time <= (XrTime)0) {
+		return oxr_error(&log, XR_ERROR_TIME_INVALID, "(time == %" PRIi64 ") is not a valid time.", time);
+	}
 
 	return oxr_space_locate(&log, spc, baseSpc, time, location);
 }
@@ -133,6 +149,8 @@ oxr_xrLocateSpace(XrSpace space,
 XrResult
 oxr_xrDestroySpace(XrSpace space)
 {
+	OXR_TRACE_MARKER();
+
 	struct oxr_space *spc;
 	struct oxr_logger log;
 	OXR_VERIFY_SPACE_AND_INIT_LOG(&log, space, spc, "xrDestroySpace");

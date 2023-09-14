@@ -1,4 +1,4 @@
-// Copyright 2019, Collabora, Ltd.
+// Copyright 2019-2022, Collabora, Ltd.
 // SPDX-License-Identifier: BSL-1.0
 /*!
  * @file
@@ -28,6 +28,7 @@ extern "C" {
  * Descriptor of a v4l2 source.
  *
  * @ingroup drv_v4l2
+ * @extends xrt_fs_mode
  */
 struct v4l2_source_descriptor
 {
@@ -49,7 +50,7 @@ struct v4l2_source_descriptor
 	/*!
 	 * Offset from start off frame to start of pixels.
 	 *
-	 * Aka crop_scanline_bytes_start.
+	 * Also known as crop_scanline_bytes_start.
 	 *
 	 * Special case for ps4 camera
 	 */
@@ -57,13 +58,19 @@ struct v4l2_source_descriptor
 	uint32_t rate;
 };
 
+
+
 /*!
  * Create a v4l2 frameserver
  *
  * @ingroup drv_v4l2
  */
 struct xrt_fs *
-v4l2_fs_create(struct xrt_frame_context *xfctx, const char *path);
+v4l2_fs_create(struct xrt_frame_context *xfctx,
+               const char *path,
+               const char *product,
+               const char *manufacturer,
+               const char *serial);
 
 
 #ifdef __cplusplus
