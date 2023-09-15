@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSL-1.0
 
 add_library(
-	aux_math STATIC
+	aux_math_gl STATIC
 	m_api.h
 	m_base.cpp
 	m_eigen_interop.hpp
@@ -36,5 +36,5 @@ add_library(
 	m_vec2.h
 	m_vec3.h
 	)
-target_link_libraries(aux_math PUBLIC aux-includes aux_util)
-target_include_directories(aux_math SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})
+target_link_libraries(aux_math_gl PUBLIC aux-includes_gl aux_util_gl)
+target_include_directories(aux_math_gl SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})

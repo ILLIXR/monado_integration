@@ -5,83 +5,83 @@
 # Client library
 #
 
-add_library(comp_client STATIC)
+add_library(comp_client_gl STATIC)
 
 target_link_libraries(
-	comp_client
-	PUBLIC xrt-interfaces
-	PRIVATE aux_util
+	comp_client_gl
+	PUBLIC xrt-interfaces_gl
+	PRIVATE aux_util_gl
 	)
-target_include_directories(comp_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(comp_client_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(XRT_HAVE_VULKAN)
 	target_sources(
-		comp_client PRIVATE client/comp_vk_client.c client/comp_vk_client.h
+		comp_client_gl PRIVATE client/comp_vk_client.c client/comp_vk_client.h
 				    client/comp_vk_glue.c
 		)
-	target_link_libraries(comp_client PRIVATE aux_vk)
+	target_link_libraries(comp_client_gl PRIVATE aux_vk_gl)
 endif()
 
 if(XRT_HAVE_OPENGL OR XRT_HAVE_OPENGLES)
 	target_sources(
-		comp_client
+		comp_client_gl
 		PRIVATE client/comp_gl_client.c client/comp_gl_client.h
 			client/comp_gl_memobj_swapchain.c client/comp_gl_memobj_swapchain.h
 		)
-	target_link_libraries(comp_client PRIVATE aux_ogl)
+	target_link_libraries(comp_client_gl PRIVATE aux_ogl_gl)
 endif()
 
 if(XRT_HAVE_OPENGL)
-	target_sources(comp_client PRIVATE client/comp_gl_glue.c)
+	target_sources(comp_client_gl PRIVATE client/comp_gl_glue.c)
 endif()
 
 if(XRT_HAVE_OPENGLES)
-	target_sources(comp_client PRIVATE client/comp_gles_glue.c)
+	target_sources(comp_client_gl PRIVATE client/comp_gles_glue.c)
 endif()
 
 if(XRT_HAVE_EGL)
 	target_sources(
-		comp_client PRIVATE client/comp_gl_eglimage_swapchain.c
+		comp_client_gl PRIVATE client/comp_gl_eglimage_swapchain.c
 				    client/comp_gl_eglimage_swapchain.h
 		)
 endif()
 
 if(XRT_HAVE_OPENGL_GLX AND XRT_HAVE_XLIB)
 	target_sources(
-		comp_client PRIVATE client/comp_gl_xlib_client.c client/comp_gl_xlib_client.h
+		comp_client_gl PRIVATE client/comp_gl_xlib_client.c client/comp_gl_xlib_client.h
 				    client/comp_gl_xlib_glue.c
 		)
-	target_link_libraries(comp_client PRIVATE OpenGL::GLX)
+	target_link_libraries(comp_client_gl PRIVATE OpenGL::GLX)
 endif()
 
 if(XRT_HAVE_OPENGL AND WIN32)
 	target_sources(
-		comp_client PRIVATE client/comp_gl_win32_client.c client/comp_gl_win32_client.h
+		comp_client_gl PRIVATE client/comp_gl_win32_client.c client/comp_gl_win32_client.h
 				    client/comp_gl_win32_glue.c
 		)
 endif()
 if(XRT_HAVE_EGL)
-	target_sources(comp_client PRIVATE client/comp_egl_client.c client/comp_egl_client.h)
+	target_sources(comp_client_gl PRIVATE client/comp_egl_client.c client/comp_egl_client.h)
 endif()
 
 if(XRT_HAVE_D3D11 OR XRT_HAVE_D3D12)
-	target_link_libraries(comp_client PRIVATE aux_d3d)
+	target_link_libraries(comp_client_gl PRIVATE aux_d3d_gl)
 endif()
 
 if(XRT_HAVE_D3D11 OR XRT_HAVE_D3D12)
-	target_sources(comp_client PRIVATE client/comp_d3d_common.cpp client/comp_d3d_common.hpp)
+	target_sources(comp_client_gl PRIVATE client/comp_d3d_common.cpp client/comp_d3d_common.hpp)
 endif()
 
 if(XRT_HAVE_D3D11)
 	target_sources(
-		comp_client PRIVATE client/comp_d3d11_client.cpp client/comp_d3d11_client.h
+		comp_client_gl PRIVATE client/comp_d3d11_client.cpp client/comp_d3d11_client.h
 				    client/comp_d3d11_glue.c
 		)
 endif()
 
 if(XRT_HAVE_D3D12)
 	target_sources(
-		comp_client PRIVATE client/comp_d3d12_client.cpp client/comp_d3d12_client.h
+		comp_client_gl PRIVATE client/comp_d3d12_client.cpp client/comp_d3d12_client.h
 				    client/comp_d3d12_glue.c
 		)
 endif()
@@ -92,7 +92,7 @@ endif()
 
 if(XRT_HAVE_VULKAN)
 	add_library(
-		comp_util STATIC
+		comp_util_gl STATIC
 		util/comp_base.h
 		util/comp_base.c
 		util/comp_semaphore.h
@@ -105,11 +105,11 @@ if(XRT_HAVE_VULKAN)
 		util/comp_vulkan.c
 		)
 	target_link_libraries(
-		comp_util
-		PUBLIC xrt-interfaces
-		PRIVATE aux_util aux_os aux_vk
+		comp_util_gl
+		PUBLIC xrt-interfaces_gl
+		PRIVATE aux_util_gl aux_os_gl aux_vk_gl
 		)
-	target_include_directories(comp_util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+	target_include_directories(comp_util_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 ##
@@ -143,7 +143,7 @@ if(XRT_HAVE_VULKAN)
 		)
 
 	add_library(
-		comp_render STATIC
+		comp_render_gl STATIC
 		${SHADER_HEADERS}
 		render/render_buffer.c
 		render/render_compute.c
@@ -154,13 +154,13 @@ if(XRT_HAVE_VULKAN)
 		render/render_util.c
 		)
 	target_link_libraries(
-		comp_render
-		PUBLIC xrt-interfaces
-		PRIVATE aux_util aux_os aux_vk
+		comp_render_gl
+		PUBLIC xrt-interfaces_gl
+		PRIVATE aux_util_gl aux_os_gl aux_vk_gl
 		)
-	target_include_directories(comp_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+	target_include_directories(comp_render_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 	# Shaders - marked SYSTEM so we get no warnings
-	target_include_directories(comp_render SYSTEM PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+	target_include_directories(comp_render_gl SYSTEM PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 	add_subdirectory(shaders)
 endif()
@@ -172,7 +172,7 @@ endif()
 if(XRT_FEATURE_COMPOSITOR_MAIN)
 
 	add_library(
-		comp_main STATIC
+		comp_main_gl STATIC
 		main/comp_compositor.c
 		main/comp_compositor.h
 		main/comp_documentation.h
@@ -190,50 +190,50 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 		main/comp_layer_renderer.c
 		)
 	target_link_libraries(
-		comp_main
-		PUBLIC xrt-interfaces
+		comp_main_gl
+		PUBLIC xrt-interfaces_gl
 		PRIVATE
-			aux_util
-			aux_os
-			aux_vk
-			comp_util
-			comp_render
+			aux_util_gl
+			aux_os_gl
+			aux_vk_gl
+			comp_util_gl
+			comp_render_gl
 		)
-	target_include_directories(comp_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+	target_include_directories(comp_main_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 	if(XRT_HAVE_XCB)
-		target_sources(comp_main PRIVATE main/comp_window_xcb.c)
-		target_include_directories(comp_main SYSTEM PRIVATE ${XCB_INCLUDE_DIRS})
-		target_link_libraries(comp_main PRIVATE ${XCB_LIBRARIES})
+		target_sources(comp_main_gl PRIVATE main/comp_window_xcb.c)
+		target_include_directories(comp_main_gl SYSTEM PRIVATE ${XCB_INCLUDE_DIRS})
+		target_link_libraries(comp_main_gl PRIVATE ${XCB_LIBRARIES})
 		if(XRT_HAVE_EGL)
-			target_include_directories(comp_main SYSTEM PRIVATE ${EGL_INCLUDE_DIRS})
-			target_link_libraries(comp_main PRIVATE ${XCB_LIBRARIES})
+			target_include_directories(comp_main_gl SYSTEM PRIVATE ${EGL_INCLUDE_DIRS})
+			target_link_libraries(comp_main_gl PRIVATE ${XCB_LIBRARIES})
 		endif()
 	endif()
 	if(XRT_HAVE_XCB AND XRT_HAVE_XLIB)
 		target_sources(
-			comp_main PRIVATE main/comp_window_direct_randr.c
+			comp_main_gl PRIVATE main/comp_window_direct_randr.c
 					  main/comp_window_direct_nvidia.c
 			)
-		target_link_libraries(comp_main PRIVATE ${X11_X11_LIB})
+		target_link_libraries(comp_main_gl PRIVATE ${X11_X11_LIB})
 	endif()
 	if(XRT_FEATURE_WINDOW_PEEK)
-		target_sources(comp_main PRIVATE main/comp_window_peek.c)
-		target_link_libraries(comp_main PRIVATE ${SDL2_LIBRARIES})
+		target_sources(comp_main_gl PRIVATE main/comp_window_peek.c)
+		target_link_libraries(comp_main_gl PRIVATE ${SDL2_LIBRARIES})
 	endif()
 	if(WIN32)
-		target_sources(comp_main PRIVATE main/comp_window_mswin.c)
+		target_sources(comp_main_gl PRIVATE main/comp_window_mswin.c)
 	endif()
 	if(VK_USE_PLATFORM_DISPLAY_KHR)
-		target_sources(comp_main PRIVATE main/comp_window_vk_display.c)
+		target_sources(comp_main_gl PRIVATE main/comp_window_vk_display.c)
 	endif()
 	if(VK_USE_PLATFORM_DISPLAY_KHR OR XRT_HAVE_XCB)
-		target_sources(comp_main PRIVATE main/comp_window_direct.c)
+		target_sources(comp_main_gl PRIVATE main/comp_window_direct.c)
 	endif()
 
 	# generate wayland protocols
 	if(XRT_HAVE_WAYLAND)
-		target_sources(comp_main PRIVATE main/comp_window_wayland.c)
+		target_sources(comp_main_gl PRIVATE main/comp_window_wayland.c)
 		pkg_get_variable(WL_PROTOS_PKG_DIR wayland-protocols pkgdatadir)
 		pkg_get_variable(WL_SCANNER wayland-scanner wayland_scanner)
 
@@ -242,8 +242,8 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 
 		set(WL_PROTOS_XML ${WL_PROTOS_PKG_DIR}/stable/xdg-shell/xdg-shell.xml)
 
-		target_include_directories(comp_main SYSTEM PRIVATE ${WL_PROTOS_DIR})
-		target_link_libraries(comp_main PRIVATE ${WAYLAND_LIBRARIES})
+		target_include_directories(comp_main_gl SYSTEM PRIVATE ${WL_PROTOS_DIR})
+		target_link_libraries(comp_main_gl PRIVATE ${WAYLAND_LIBRARIES})
 
 		if(XRT_HAVE_WAYLAND_DIRECT)
 			list(
@@ -251,9 +251,9 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 				${WL_PROTOS_PKG_DIR}/staging/drm-lease/drm-lease-v1.xml
 				)
 
-			target_sources(comp_main PRIVATE main/comp_window_direct_wayland.c)
+			target_sources(comp_main_gl PRIVATE main/comp_window_direct_wayland.c)
 
-			target_link_libraries(comp_main PRIVATE PkgConfig::LIBDRM)
+			target_link_libraries(comp_main_gl PRIVATE PkgConfig::LIBDRM)
 		endif()
 
 		foreach(wl_proto_xml ${WL_PROTOS_XML})
@@ -282,13 +282,13 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 				COMMENT "Generating ${WL_PROTO_H}"
 				)
 
-			target_sources(comp_main PRIVATE ${WL_PROTO_C} ${WL_PROTO_H})
+			target_sources(comp_main_gl PRIVATE ${WL_PROTO_C} ${WL_PROTO_H})
 		endforeach()
 
 	endif()
 	if(ANDROID)
-		target_sources(comp_main PRIVATE main/comp_window_android.c)
-		target_link_libraries(comp_main PRIVATE aux_ogl aux_android)
+		target_sources(comp_main_gl PRIVATE main/comp_window_android.c)
+		target_link_libraries(comp_main_gl PRIVATE aux_ogl_gl aux_android_gl)
 	endif()
 endif()
 
@@ -305,26 +305,26 @@ endif()
 #
 
 add_library(
-	comp_multi STATIC multi/comp_multi_compositor.c multi/comp_multi_interface.h
+	comp_multi_gl STATIC multi/comp_multi_compositor.c multi/comp_multi_interface.h
 			  multi/comp_multi_private.h multi/comp_multi_system.c
 	)
 target_link_libraries(
-	comp_multi
-	PUBLIC xrt-interfaces
-	PRIVATE aux_util aux_os
+	comp_multi_gl
+	PUBLIC xrt-interfaces_gl
+	PRIVATE aux_util_gl aux_os_gl
 	)
-target_include_directories(comp_multi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(comp_multi_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(XRT_FEATURE_COMPOSITOR_MAIN)
-	target_link_libraries(comp_main PRIVATE comp_multi)
+	target_link_libraries(comp_main_gl PRIVATE comp_multi_gl)
 endif()
 
 ###
 # Mock native compositor
-add_library(comp_mock STATIC mock/mock_compositor.cpp mock/mock_compositor.h)
-target_include_directories(comp_mock PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(comp_mock_gl STATIC mock/mock_compositor.cpp mock/mock_compositor.h)
+target_include_directories(comp_mock_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
-	comp_mock
-	PUBLIC xrt-interfaces
-	PRIVATE aux_util
+	comp_mock_gl
+	PUBLIC xrt-interfaces_gl
+	PRIVATE aux_util_gl
 	)

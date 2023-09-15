@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSL-1.0
 
 add_library(
-	aux_tracking STATIC
+	aux_tracking_gl STATIC
 	t_data_utils.c
 	t_imu_fusion.hpp
 	t_imu.cpp
@@ -10,15 +10,15 @@ add_library(
 	t_tracking.h
 	)
 target_link_libraries(
-	aux_tracking
-	PUBLIC aux-includes xrt-external-cjson
-	PRIVATE aux_math aux_util xrt-external-flexkalman xrt-external-hungarian
+	aux_tracking_gl
+	PUBLIC aux-includes_gl xrt-external-cjson_gl
+	PRIVATE aux_math_gl aux_util_gl xrt-external-flexkalman_gl xrt-external-hungarian_gl
 	)
-target_include_directories(aux_tracking SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})
+target_include_directories(aux_tracking_gl SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})
 
 if(XRT_HAVE_OPENCV)
 	target_sources(
-		aux_tracking
+		aux_tracking_gl
 		PRIVATE
 			t_calibration_opencv.hpp
 			t_calibration.cpp
@@ -39,11 +39,11 @@ if(XRT_HAVE_OPENCV)
 			t_tracker_psmv.cpp
 			t_tracker_psvr.cpp
 		)
-	target_include_directories(aux_tracking SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
-	target_link_libraries(aux_tracking PUBLIC ${OpenCV_LIBRARIES})
+	target_include_directories(aux_tracking_gl SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
+	target_link_libraries(aux_tracking_gl PUBLIC ${OpenCV_LIBRARIES})
 endif()
 
 if(XRT_FEATURE_SLAM)
-	target_sources(aux_tracking PRIVATE t_tracker_slam.cpp)
-	target_link_libraries(aux_tracking PRIVATE xrt-external-slam)
+	target_sources(aux_tracking_gl PRIVATE t_tracker_slam.cpp)
+	target_link_libraries(aux_tracking_gl PRIVATE xrt-external-slam_gl)
 endif()

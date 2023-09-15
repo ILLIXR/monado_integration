@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: BSL-1.0
 
 # Common includes
-add_library(aux-includes INTERFACE)
+add_library(aux-includes_gl INTERFACE)
 target_include_directories(
-	aux-includes INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+	aux-includes_gl INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
 	)
-target_link_libraries(aux-includes INTERFACE xrt-interfaces)
+target_link_libraries(aux-includes_gl INTERFACE xrt-interfaces_gl)
 
 # Bindings library.
 add_subdirectory(bindings)

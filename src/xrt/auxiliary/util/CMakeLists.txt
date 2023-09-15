@@ -7,7 +7,7 @@ configure_file(
 	)
 
 add_library(
-	aux_util STATIC
+	aux_util_gl STATIC
 	u_autoexpgain.c
 	u_autoexpgain.h
 	u_bitwise.c
@@ -102,31 +102,31 @@ add_library(
 	u_worker.hpp
 	"${CMAKE_CURRENT_BINARY_DIR}/u_git_tag.c"
 	)
-target_link_libraries(aux_util PUBLIC aux-includes xrt-pthreads aux_generated_bindings aux_math)
+target_link_libraries(aux_util_gl PUBLIC aux-includes_gl xrt-pthreads aux_generated_bindings_gl aux_math_gl)
 
 if(XRT_HAVE_JPEG)
-	target_link_libraries(aux_util PRIVATE ${JPEG_LIBRARIES})
-	target_include_directories(aux_util PRIVATE ${JPEG_INCLUDE_DIRS})
+	target_link_libraries(aux_util_gl PRIVATE ${JPEG_LIBRARIES})
+	target_include_directories(aux_util_gl PRIVATE ${JPEG_INCLUDE_DIRS})
 endif()
 
 if(XRT_HAVE_SYSTEM_CJSON)
-	target_link_libraries(aux_util PUBLIC cJSON::cJSON)
-	target_compile_definitions(aux_util PRIVATE XRT_HAVE_SYSTEM_CJSON)
+	target_link_libraries(aux_util_gl PUBLIC cJSON::cJSON)
+	target_compile_definitions(aux_util_gl PRIVATE XRT_HAVE_SYSTEM_CJSON)
 else()
-	target_link_libraries(aux_util PUBLIC xrt-external-cjson)
+	target_link_libraries(aux_util_gl PUBLIC xrt-external-cjson_gl)
 endif()
 
 if(XRT_FEATURE_TRACING AND XRT_HAVE_PERCETTO)
-	target_link_libraries(aux_util PUBLIC percetto::percetto)
+	target_link_libraries(aux_util_gl PUBLIC percetto::percetto)
 endif()
 
 if(XRT_HAVE_LIBBSD)
-	target_include_directories(aux_util SYSTEM PRIVATE ${LIBBSD_INCLUDE_DIRS})
-	target_link_libraries(aux_util PUBLIC ${LIBBSD_LIBRARIES})
+	target_include_directories(aux_util_gl SYSTEM PRIVATE ${LIBBSD_INCLUDE_DIRS})
+	target_link_libraries(aux_util_gl PUBLIC ${LIBBSD_LIBRARIES})
 endif()
 
 if(ANDROID)
-	target_link_libraries(aux_util PUBLIC ${ANDROID_LOG_LIBRARY})
+	target_link_libraries(aux_util_gl PUBLIC ${ANDROID_LOG_LIBRARY})
 endif()
 
-target_include_directories(aux_util PRIVATE ${EIGEN3_INCLUDE_DIR})
+target_include_directories(aux_util_gl PRIVATE ${EIGEN3_INCLUDE_DIR})

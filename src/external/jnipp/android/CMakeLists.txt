@@ -9,4 +9,4 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID_STL=c++_static -std=gnu++11 -f
 
 FILE(GLOB sources ../*.cpp ../common/*.cpp ../android/*.cpp)
 
-ADD_LIBRARY(jnipp SHARED ${sources})
+ADD_LIBRARY(jnipp_gl SHARED ${sources})

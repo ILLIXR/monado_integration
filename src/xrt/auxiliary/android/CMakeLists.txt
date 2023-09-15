@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: BSL-1.0
 
 add_library(
-	android_app_glue STATIC
+	android_app_glue_gl STATIC
 	${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
 	)
-target_include_directories(android_app_glue PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
+target_include_directories(android_app_glue_gl PUBLIC ${ANDROID_NDK}/sources/android/native_app_glue)
 # disable these warnings in external code
-target_compile_options(android_app_glue PRIVATE -Wno-format-pedantic)
+target_compile_options(android_app_glue_gl PRIVATE -Wno-format-pedantic)
 
 add_library(
-	aux_android STATIC
+	aux_android_gl STATIC
 	android_ahardwarebuffer_allocator.c
 	android_ahardwarebuffer_allocator.h
 	android_custom_surface.cpp
@@ -26,12 +26,12 @@ add_library(
 	org.freedesktop.monado.auxiliary.impl.hpp
 	)
 target_link_libraries(
-	aux_android
-	PUBLIC aux_util
+	aux_android_gl
+	PUBLIC aux_util_gl
 	PRIVATE
 		${ANDROID_LIBRARY}
 		${ANDROID_LOG_LIBRARY}
-		xrt-external-jni-wrap
-		xrt-external-jnipp
-		android_app_glue
+		xrt-external-jni-wrap_gl
+		xrt-external-jnipp_gl
+		android_app_glue_gl
 	)

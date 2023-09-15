@@ -11,10 +11,10 @@ execute_process(
 	COMMAND
 		${CMAKE_COMMAND} -E create_symlink
 		${CMAKE_INSTALL_PREFIX}/${MANIFEST_RELATIVE_DIR}/${RUNTIME_TARGET}.json
-		${CMAKE_BINARY_DIR}/active_runtime.json
+		${CMAKE_BINARY_DIR}/active_runtime_gl.json
 	)
 file(
 	INSTALL
 	DESTINATION "${CMAKE_INSTALL_FULL_SYSCONFDIR}/xdg/openxr/${XR_API_MAJOR}"
-	TYPE FILE FILES "${CMAKE_BINARY_DIR}/active_runtime.json"
+	TYPE FILE FILES "${CMAKE_BINARY_DIR}/active_runtime_gl.json"
 	)

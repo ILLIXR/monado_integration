@@ -8,12 +8,12 @@ project(jnipp)
 find_package(JNI REQUIRED)
 include(CTest)
 
-add_library(jnipp jnipp.cpp)
+add_library(jnipp_gl jnipp.cpp)
 target_include_directories(
-  jnipp
+  jnipp_gl
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
   PRIVATE ${JNI_INCLUDE_DIRS})
-target_compile_features(jnipp PUBLIC cxx_std_11)
-target_link_libraries(jnipp PUBLIC ${CMAKE_DL_LIBS})
+target_compile_features(jnipp_gl PUBLIC cxx_std_11)
+target_link_libraries(jnipp_gl PUBLIC ${CMAKE_DL_LIBS})
 
 add_subdirectory(tests)

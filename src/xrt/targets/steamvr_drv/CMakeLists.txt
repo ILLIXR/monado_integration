@@ -14,28 +14,28 @@ add_custom_command(
 	COMMENT "Generating SteamVR input profiles to ${INPUT_PROFILES_OUTPUT_DIR}"
 	)
 add_custom_target(
-	steamvr_generated_input_profiles
+	steamvr_generated_input_profiles_gl
 	DEPENDS "${INPUT_PROFILES_OUTPUT_DIR}"
 	COMMENT "Generating SteamVR input profiles"
 	)
 
-add_library(driver_monado MODULE main.c)
-add_dependencies(driver_monado steamvr_generated_input_profiles)
+add_library(driver_monado_gl MODULE main.c)
+add_dependencies(driver_monado_gl steamvr_generated_input_profiles_gl)
 
 target_link_libraries(
-	driver_monado
+	driver_monado_gl
 	PRIVATE
-		xrt-external-openvr
-		aux_util
-		st_ovrd
-		st_prober
-		target_lists
-		target_instance_no_comp
+		xrt-external-openvr_gl
+		aux_util_gl
+		st_ovrd_gl
+		st_prober_gl
+		target_lists_gl
+		target_instance_no_comp_gl
 	)
 
 # meta data that the steamvr plugin needs in the base directory of the steamvr plugin
-file(COPY driver.vrdrivermanifest DESTINATION ${PROJECT_BINARY_DIR}/steamvr-monado)
-file(COPY resources DESTINATION ${PROJECT_BINARY_DIR}/steamvr-monado)
+file(COPY driver.vrdrivermanifest DESTINATION ${PROJECT_BINARY_DIR}/steamvr-monado_gl)
+file(COPY resources DESTINATION ${PROJECT_BINARY_DIR}/steamvr-monado_gl)
 
 # determine the output directory for the steamvr plugin
 if(WIN32)
@@ -60,10 +60,10 @@ elseif(NOT ANDROID)
 endif()
 
 # message("SteamVR plugin path: ${PLUGINDIR}")
-set_target_properties(driver_monado PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PLUGINDIR}")
+set_target_properties(driver_monado_gl PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${PLUGINDIR}")
 
 # don't add lib prefix to driver_monado.so
-set_target_properties(driver_monado PROPERTIES PREFIX "")
+set_target_properties(driver_monado_gl PROPERTIES PREFIX "")
 
 install(
 	DIRECTORY "${PROJECT_BINARY_DIR}/steamvr-monado"

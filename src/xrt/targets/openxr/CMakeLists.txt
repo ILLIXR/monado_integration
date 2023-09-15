@@ -4,7 +4,7 @@
 ######
 # Create a loadable OpenXR driver.
 
-set(RUNTIME_BARE_SUFFIX monado)
+set(RUNTIME_BARE_SUFFIX monado_gl)
 set(RUNTIME_SUFFIX _${RUNTIME_BARE_SUFFIX})
 
 set(RUNTIME_TARGET
@@ -18,20 +18,20 @@ set(XR_API_MAJOR "1")
 add_library(${RUNTIME_TARGET} MODULE target.c libopenxr.def)
 
 # Note: Order may matter in these lists!
-target_link_libraries(${RUNTIME_TARGET} PUBLIC aux_vk aux_os aux_util aux_math)
+target_link_libraries(${RUNTIME_TARGET} PUBLIC aux_vk_gl aux_os_gl aux_util_gl aux_math_gl)
 
 if(XRT_FEATURE_SERVICE)
-	target_link_libraries(${RUNTIME_TARGET} PUBLIC st_oxr ipc_client comp_client)
+	target_link_libraries(${RUNTIME_TARGET} PUBLIC st_oxr_gl ipc_client_gl comp_client_gl)
 else()
 	target_link_libraries(
 		${RUNTIME_TARGET}
 		PUBLIC
-			st_oxr
-			st_prober
-			target_lists
-			target_instance
-			comp_main
-			comp_client
+			st_oxr_gl
+			st_prober_gl
+			target_lists_gl
+			target_instance_gl
+			comp_main_gl
+			comp_client_gl
 		)
 endif()
 
@@ -133,19 +133,19 @@ endif()
 
 ###
 # Inelegant but effective SDL2-based debug GUI
-add_library(oxr_sdl2 STATIC oxr_sdl2_hack.c)
-target_link_libraries(oxr_sdl2 PRIVATE aux_util)
+add_library(oxr_sdl2_gl STATIC oxr_sdl2_hack.c)
+target_link_libraries(oxr_sdl2_gl PRIVATE aux_util_gl)
 if(XRT_HAVE_OPENGL)
-	target_link_libraries(oxr_sdl2 PUBLIC aux_ogl)
+	target_link_libraries(oxr_sdl2_gl PUBLIC aux_ogl_gl)
 endif()
 if(XRT_HAVE_SDL2)
-	target_link_libraries(oxr_sdl2 PRIVATE st_gui xrt-external-imgui-sdl2 ${SDL2_LIBRARIES})
+	target_link_libraries(oxr_sdl2_gl PRIVATE st_gui_gl xrt-external-imgui-sdl2_gl ${SDL2_LIBRARIES})
 
 	if(XRT_BUILD_DRIVER_QWERTY)
-		target_link_libraries(oxr_sdl2 PRIVATE drv_qwerty drv_qwerty_includes)
+		target_link_libraries(oxr_sdl2_gl PRIVATE drv_qwerty_gl drv_qwerty_includes_gl)
 	endif()
 endif()
 
 if(XRT_FEATURE_CLIENT_DEBUG_GUI)
-	target_link_libraries(${RUNTIME_TARGET} PRIVATE oxr_sdl2)
+	target_link_libraries(${RUNTIME_TARGET} PRIVATE oxr_sdl2_gl)
 endif()

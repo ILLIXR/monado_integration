@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSL-1.0
 
 add_library(
-	aux_vk STATIC
+	aux_vk_gl STATIC
 	vk_bundle_init.c
 	vk_compositor_flags.c
 	vk_documentation.h
@@ -18,21 +18,21 @@ add_library(
 	vk_sync_objects.c
 	vk_time.c
 	)
-target_link_libraries(aux_vk PUBLIC aux_os aux_util)
-target_link_libraries(aux_vk PUBLIC Vulkan::Vulkan)
-target_include_directories(aux_vk PUBLIC ${Vulkan_INCLUDE_DIR})
+target_link_libraries(aux_vk_gl PUBLIC aux_os_gl aux_util_gl)
+target_link_libraries(aux_vk_gl PUBLIC Vulkan::Vulkan)
+target_include_directories(aux_vk_gl PUBLIC ${Vulkan_INCLUDE_DIR})
 
 if(ANDROID)
-	target_link_libraries(aux_vk PUBLIC aux_android)
-	target_link_libraries(aux_vk PUBLIC ${ANDROID_LIBRARY})
+	target_link_libraries(aux_vk_gl PUBLIC aux_android)
+	target_link_libraries(aux_vk_gl PUBLIC ${ANDROID_LIBRARY})
 endif()
 
 if(XRT_HAVE_WAYLAND)
-	target_include_directories(aux_vk PRIVATE ${WAYLAND_INCLUDE_DIR})
+	target_include_directories(aux_vk_gl PRIVATE ${WAYLAND_INCLUDE_DIR})
 endif()
 if(XRT_HAVE_XCB)
-	target_include_directories(aux_vk PRIVATE ${XCB_INCLUDE_DIR})
+	target_include_directories(aux_vk_gl PRIVATE ${XCB_INCLUDE_DIR})
 endif()
 if(XRT_HAVE_XRANDR)
-	target_include_directories(aux_vk PRIVATE ${XRANDR_INCLUDE_DIR} ${X11_INCLUDE_DIR})
+	target_include_directories(aux_vk_gl PRIVATE ${XRANDR_INCLUDE_DIR} ${X11_INCLUDE_DIR})
 endif()

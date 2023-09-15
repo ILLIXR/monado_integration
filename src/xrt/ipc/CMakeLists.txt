@@ -35,21 +35,21 @@ set(IPC_COMMON_SOURCES
     shared/ipc_utils.h
 	)
 
-add_library(ipc_shared STATIC ${IPC_COMMON_SOURCES})
+add_library(ipc_shared_gl STATIC ${IPC_COMMON_SOURCES})
 target_include_directories(
-	ipc_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+	ipc_shared_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
 	)
-target_link_libraries(ipc_shared PRIVATE aux_util)
+target_link_libraries(ipc_shared_gl PRIVATE aux_util_gl)
 
 if(RT_LIBRARY)
-	target_link_libraries(ipc_shared PUBLIC ${RT_LIBRARY})
+	target_link_libraries(ipc_shared_gl PUBLIC ${RT_LIBRARY})
 endif()
 
 ###
 # Client
 
 add_library(
-	ipc_client STATIC
+	ipc_client_gl STATIC
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_client_generated.c
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_client_generated.h
 	client/ipc_client.h
@@ -59,15 +59,15 @@ add_library(
 	client/ipc_client_instance.c
 	)
 target_include_directories(
-	ipc_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+	ipc_client_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
 	)
-target_link_libraries(ipc_client PRIVATE aux_util ipc_shared)
+target_link_libraries(ipc_client_gl PRIVATE aux_util_gl ipc_shared_gl)
 
 ###
 # Server
 
 add_library(
-	ipc_server STATIC
+	ipc_server_gl STATIC
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_server_generated.c
 	${CMAKE_CURRENT_BINARY_DIR}/ipc_server_generated.h
 	server/ipc_server.h
@@ -76,20 +76,20 @@ add_library(
 	server/ipc_server_process.c
 	)
 target_include_directories(
-	ipc_server
+	ipc_server_gl
 	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 	PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 	)
-target_link_libraries(ipc_server PRIVATE aux_util ipc_shared)
+target_link_libraries(ipc_server_gl PRIVATE aux_util_gl ipc_shared_gl)
 
 if(XRT_HAVE_SYSTEMD)
-	target_include_directories(ipc_server PRIVATE ${SYSTEMD_INCLUDE_DIRS})
-	target_link_libraries(ipc_server PRIVATE ${SYSTEMD_LIBRARIES})
+	target_include_directories(ipc_server_gl PRIVATE ${SYSTEMD_INCLUDE_DIRS})
+	target_link_libraries(ipc_server_gl PRIVATE ${SYSTEMD_LIBRARIES})
 endif()
 
 if(ANDROID)
 	add_library(
-		ipc_android STATIC
+		ipc_android_gl STATIC
 		android/ipc_client_android.cpp
 		android/ipc_client_android.h
 		android/org.freedesktop.monado.ipc.cpp
@@ -97,18 +97,18 @@ if(ANDROID)
 		android/org.freedesktop.monado.ipc.impl.hpp
 		)
 	target_link_libraries(
-		ipc_android PUBLIC xrt-external-jni-wrap xrt-external-jnipp aux_android
+		ipc_android_gl PUBLIC xrt-external-jni-wrap_gl xrt-external-jnipp_gl aux_android_gl
 		)
 	target_sources(
-		ipc_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/server/ipc_server_mainloop_android.c
+		ipc_server_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/server/ipc_server_mainloop_android.c
 		)
 	target_link_libraries(
-		ipc_shared
+		ipc_shared_gl
 		PUBLIC ${ANDROID_LIBRARY}
-		PRIVATE aux_android ipc_android
+		PRIVATE aux_android_gl ipc_android_gl
 		)
 elseif(XRT_HAVE_LINUX)
 	target_sources(
-		ipc_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/server/ipc_server_mainloop_linux.c
+		ipc_server_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/server/ipc_server_mainloop_linux.c
 		)
 endif()

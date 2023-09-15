@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSL-1.0
 
 add_executable(
-	sdl-test
+	sdl-test_gl
 	sdl_compositor.c
 	sdl_device.c
 	sdl_hack_stubs.c
@@ -13,25 +13,25 @@ add_executable(
 	sdl_program.cpp
 	sdl_swapchain.c
 	)
-add_sanitizers(sdl-test)
+add_sanitizers(sdl-test_gl)
 
 target_link_libraries(
-	sdl-test
+	sdl-test_gl
 	PRIVATE
-		xrt-external-imgui-sdl2
-		aux_os
-		aux_ogl
-		aux_util
-		comp_util
-		comp_multi
-		ipc_server
-		st_gui
-		drv_includes
-		drv_simulated
+		xrt-external-imgui-sdl2_gl
+		aux_os_gl
+		aux_ogl_gl
+		aux_util_gl
+		comp_util_gl
+		comp_multi_gl
+		ipc_server_gl
+		st_gui_gl
+		drv_includes_gl
+		drv_simulated_gl
 	)
 
 if(WIN32)
-	target_link_libraries(gui PRIVATE SDL2::SDL2main)
+	target_link_libraries(gui_gl PRIVATE SDL2::SDL2main)
 endif()
 
-install(TARGETS sdl-test RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS sdl-test_gl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

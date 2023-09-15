@@ -3,7 +3,7 @@
 
 add_subdirectory(xrt)
 
-add_library(xrt-interfaces INTERFACE)
+add_library(xrt-interfaces_gl INTERFACE)
 target_include_directories(
-	xrt-interfaces INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+	xrt-interfaces_gl INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
 	)
