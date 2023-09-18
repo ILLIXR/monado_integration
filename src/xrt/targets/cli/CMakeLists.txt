@@ -3,6 +3,8 @@
 
 ######
 # Create a cli interface for Monado.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 add_executable(
 	cli_gl
@@ -30,6 +32,7 @@ target_link_libraries(
 		aux_math_gl
 		target_instance_no_comp_gl
 		drv_includes_gl
+		Threads::Threads
 	)
 
 install(TARGETS cli_gl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

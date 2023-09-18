@@ -133,8 +133,11 @@ endif()
 
 ###
 # Inelegant but effective SDL2-based debug GUI
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
+
 add_library(oxr_sdl2_gl STATIC oxr_sdl2_hack.c)
-target_link_libraries(oxr_sdl2_gl PRIVATE aux_util_gl)
+target_link_libraries(oxr_sdl2_gl PRIVATE aux_util_gl Threads::Threads)
 if(XRT_HAVE_OPENGL)
 	target_link_libraries(oxr_sdl2_gl PUBLIC aux_ogl_gl)
 endif()

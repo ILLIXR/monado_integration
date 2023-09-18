@@ -1,5 +1,7 @@
 # Copyright 2019-2022, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 add_library(
 	aux_math_gl STATIC
@@ -36,5 +38,5 @@ add_library(
 	m_vec2.h
 	m_vec3.h
 	)
-target_link_libraries(aux_math_gl PUBLIC aux-includes_gl aux_util_gl)
+target_link_libraries(aux_math_gl PUBLIC aux-includes_gl aux_util_gl Threads::Threads)
 target_include_directories(aux_math_gl SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})

@@ -4,12 +4,14 @@
 ###
 # Client library
 #
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 add_library(comp_client_gl STATIC)
 
 target_link_libraries(
 	comp_client_gl
-	PUBLIC xrt-interfaces_gl
+	PUBLIC xrt-interfaces_gl Threads::Threads
 	PRIVATE aux_util_gl
 	)
 target_include_directories(comp_client_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -106,7 +108,7 @@ if(XRT_HAVE_VULKAN)
 		)
 	target_link_libraries(
 		comp_util_gl
-		PUBLIC xrt-interfaces_gl
+		PUBLIC xrt-interfaces_gl Threads::Threads
 		PRIVATE aux_util_gl aux_os_gl aux_vk_gl
 		)
 	target_include_directories(comp_util_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -155,7 +157,7 @@ if(XRT_HAVE_VULKAN)
 		)
 	target_link_libraries(
 		comp_render_gl
-		PUBLIC xrt-interfaces_gl
+		PUBLIC xrt-interfaces_gl Threads::Threads
 		PRIVATE aux_util_gl aux_os_gl aux_vk_gl
 		)
 	target_include_directories(comp_render_gl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -191,7 +193,7 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 		)
 	target_link_libraries(
 		comp_main_gl
-		PUBLIC xrt-interfaces_gl
+		PUBLIC xrt-interfaces_gl Threads::Threads
 		PRIVATE
 			aux_util_gl
 			aux_os_gl
@@ -219,7 +221,7 @@ if(XRT_FEATURE_COMPOSITOR_MAIN)
 	endif()
 	if(XRT_FEATURE_WINDOW_PEEK)
 		target_sources(comp_main_gl PRIVATE main/comp_window_peek.c)
-		target_link_libraries(comp_main_gl PRIVATE ${SDL2_LIBRARIES})
+		target_link_libraries(comp_main_gl PRIVATE ${SDL2_LIBRARIES} Threads::Threads)
 	endif()
 	if(WIN32)
 		target_sources(comp_main_gl PRIVATE main/comp_window_mswin.c)
@@ -310,7 +312,7 @@ add_library(
 	)
 target_link_libraries(
 	comp_multi_gl
-	PUBLIC xrt-interfaces_gl
+	PUBLIC xrt-interfaces_gl Threads::Threads
 	PRIVATE aux_util_gl aux_os_gl
 	)
 target_include_directories(comp_multi_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

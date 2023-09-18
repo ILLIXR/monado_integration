@@ -1,6 +1,8 @@
 # Copyright 2019-2021, Collabora, Ltd.
 #
 # SPDX-License-Identifier: BSL-1.0
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 set(ENABLED_HEADSET_DRIVERS)
 set(ENABLED_DRIVERS)
@@ -13,7 +15,7 @@ if(XRT_BUILD_DRIVER_ARDUINO)
 		drv_arduino_gl STATIC arduino/arduino_device.c arduino/arduino_interface.h
 				   arduino/arduino_prober.c
 		)
-	target_link_libraries(drv_arduino_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl)
+	target_link_libraries(drv_arduino_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl Threads::Threads)
 	list(APPEND ENABLED_DRIVERS arduino)
 endif()
 
@@ -26,14 +28,11 @@ if(XRT_BUILD_DRIVER_DAYDREAM)
 		drv_daydream_gl STATIC daydream/daydream_device.c daydream/daydream_device.h
 				    daydream/daydream_interface.h daydream/daydream_prober.c
 		)
-	target_link_libraries(drv_daydream_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl)
+	target_link_libraries(drv_daydream_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl Threads::Threads)
 	list(APPEND ENABLED_DRIVERS daydream)
 endif()
 
 if(XRT_BUILD_DRIVER_DEPTHAI)
-	set(THREADS_PREFER_PTHREAD_FLAG ON)
-
-	find_package(Threads)
 
 	add_library(drv_depthai_gl STATIC depthai/depthai_driver.cpp depthai/depthai_interface.h)
 	target_link_libraries(
@@ -89,7 +88,7 @@ if(XRT_BUILD_DRIVER_HDK)
 		drv_hdk_gl STATIC hdk/hdk_device.cpp hdk/hdk_device.h hdk/hdk_interface.h
 			       hdk/hdk_prober.c
 		)
-	target_link_libraries(drv_hdk_gl PRIVATE xrt-interfaces_gl aux_math_gl)
+	target_link_libraries(drv_hdk_gl PRIVATE xrt-interfaces_gl aux_math_gl Threads::Threads)
 	list(APPEND ENABLED_HEADSET_DRIVERS hdk)
 endif()
 
@@ -111,13 +110,13 @@ if(XRT_BUILD_DRIVER_NS)
 		north_star/ns_hmd.c
 		north_star/ns_interface.h
 		)
-	target_link_libraries(drv_ns_gl PRIVATE xrt-interfaces_gl aux_math_gl xrt-external-cjson_gl)
+	target_link_libraries(drv_ns_gl PRIVATE xrt-interfaces_gl aux_math_gl xrt-external-cjson_gl Threads::Threads)
 	list(APPEND ENABLED_HEADSET_DRIVERS ns)
 endif()
 
 if(XRT_BUILD_DRIVER_ULV2)
 	add_library(drv_ulv2_gl STATIC ultraleap_v2/ulv2_driver.cpp ultraleap_v2/ulv2_interface.h)
-	target_link_libraries(drv_ulv2_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_math_gl LeapV2::LeapV2)
+	target_link_libraries(drv_ulv2_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_math_gl LeapV2::LeapV2 Threads::Threads)
 endif()
 
 if(XRT_BUILD_DRIVER_OHMD)
@@ -149,7 +148,7 @@ if(XRT_BUILD_DRIVER_OPENGLOVES)
 		opengloves/communication/bluetooth/opengloves_prober_bt.h
 		opengloves/communication/bluetooth/opengloves_prober_bt.c
 		)
-	target_link_libraries(drv_opengloves_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl bluetooth)
+	target_link_libraries(drv_opengloves_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_os_gl bluetooth Threads::Threads)
 	list(APPEND ENABLED_DRIVERS opengloves)
 
 endif()
@@ -159,7 +158,7 @@ if(XRT_BUILD_DRIVER_PSMV)
 	target_link_libraries(
 		drv_psmv_gl
 		PRIVATE xrt-interfaces_gl
-		PUBLIC aux_os_gl aux_tracking_gl
+		PUBLIC aux_os_gl aux_tracking_gl Threads::Threads
 		)
 	list(APPEND ENABLED_DRIVERS psmv)
 endif()
@@ -173,7 +172,7 @@ if(XRT_BUILD_DRIVER_PSVR)
 		psvr/psvr_packet.c
 		psvr/psvr_prober.c
 		)
-	target_link_libraries(drv_psvr_gl PRIVATE xrt-interfaces_gl HIDAPI::hidapi aux_util_gl)
+	target_link_libraries(drv_psvr_gl PRIVATE xrt-interfaces_gl HIDAPI::hidapi aux_util_gl Threads::Threads)
 	target_include_directories(drv_psvr_gl PRIVATE ${HIDAPI_INCLUDE_DIRS})
 	list(APPEND ENABLED_HEADSET_DRIVERS psvr)
 endif()
@@ -187,7 +186,7 @@ if(XRT_BUILD_DRIVER_REALSENSE)
 		realsense/rs_driver.h
 		realsense/rs_interface.h
 		)
-	target_link_libraries(drv_realsense_gl PRIVATE xrt-interfaces_gl realsense2::realsense2 aux_util_gl)
+	target_link_libraries(drv_realsense_gl PRIVATE xrt-interfaces_gl realsense2::realsense2 aux_util_gl Threads::Threads)
 	list(APPEND ENABLED_HEADSET_DRIVERS rs)
 endif()
 
@@ -200,7 +199,7 @@ if(XRT_BUILD_DRIVER_REMOTE)
 		remote/r_interface.h
 		remote/r_internal.h
 		)
-	target_link_libraries(drv_remote_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_vive_gl)
+	target_link_libraries(drv_remote_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_vive_gl Threads::Threads)
 	list(APPEND ENABLED_HEADSET_DRIVERS remote)
 endif()
 
@@ -236,6 +235,7 @@ if(XRT_BUILD_DRIVER_RIFT_S)
 			aux_math_gl
 			xrt-external-cjson_gl
 			xrt-external-tinyceres_gl
+			Threads::Threads
 		)
 	list(APPEND ENABLED_HEADSET_DRIVERS rift-s)
 endif()
@@ -266,6 +266,7 @@ if(XRT_BUILD_DRIVER_VIVE)
 			aux_math_gl
 			xrt-external-cjson_gl
 			aux_vive_gl
+			Threads::Threads
 		)
 	target_link_libraries(drv_vive_gl PRIVATE ${ZLIB_LIBRARIES})
 	target_include_directories(drv_vive_gl PRIVATE ${ZLIB_INCLUDE_DIRS})
@@ -280,7 +281,7 @@ endif()
 
 if(XRT_BUILD_DRIVER_VF)
 	add_library(drv_vf_gl STATIC vf/vf_driver.c)
-	target_link_libraries(drv_vf PRIVATE xrt-interfaces_gl aux_os_gl aux_util_gl ${GST_LIBRARIES})
+	target_link_libraries(drv_vf PRIVATE xrt-interfaces_gl aux_os_gl aux_util_gl ${GST_LIBRARIES} Threads::Threads)
 	target_include_directories(drv_vf_gl PRIVATE ${GST_INCLUDE_DIRS})
 	list(APPEND ENABLED_DRIVERS vf)
 endif()
@@ -314,6 +315,7 @@ if(XRT_BUILD_DRIVER_SURVIVE)
 			aux_math_gl
 			aux_vive_gl
 			PkgConfig::SURVIVE
+			Threads::Threads
 		)
 	list(APPEND ENABLED_HEADSET_DRIVERS survive)
 endif()
@@ -331,6 +333,7 @@ if(XRT_BUILD_DRIVER_ANDROID)
 			aux_os_gl
 			aux_android_gl
 			${ANDROID_LIBRARY}
+			Threads::Threads
 		)
 	list(APPEND ENABLED_DRIVERS android)
 endif()
@@ -345,7 +348,7 @@ if(XRT_BUILD_DRIVER_ILLIXR)
 		illixr/illixr_component.cpp
 		illixr/illixr_component.h
 		)
-	target_link_libraries(drv_illixr_gl PUBLIC ${CMAKE_DL_LIBS} xrt-interfaces_gl aux_util_gl aux_os_gl spdlog::spdlog)
+	target_link_libraries(drv_illixr_gl PUBLIC ${CMAKE_DL_LIBS} xrt-interfaces_gl aux_util_gl aux_os_gl spdlog::spdlog Threads::Threads)
 	target_include_directories(drv_illixr_gl PUBLIC ${ILLIXR_PATH})
 	list(APPEND ENABLED_HEADSET_DRIVERS illixr)
 endif()
@@ -382,6 +385,7 @@ if(XRT_BUILD_DRIVER_WMR)
 			aux_math_gl
 			aux_tracking_gl
 			xrt-external-cjson_gl
+			Threads::Threads
 		)
 	list(APPEND ENABLED_HEADSET_DRIVERS wmr)
 
@@ -410,13 +414,13 @@ if(XRT_BUILD_DRIVER_EUROC)
 	target_link_libraries(
 		drv_euroc_gl PRIVATE xrt-interfaces_gl aux_util_gl aux_tracking_gl ${OpenCV_LIBRARIES}
 		)
-	target_include_directories(drv_euroc_gl PRIVATE ${OpenCV_INCLUDE_DIRS})
+	target_include_directories(drv_euroc_gl PRIVATE ${OpenCV_INCLUDE_DIRS} Threads::Threads)
 	list(APPEND ENABLED_DRIVERS euroc)
 endif()
 
 if(XRT_BUILD_DRIVER_SIMULAVR)
 	add_library(drv_svr_gl STATIC simula/svr_hmd.c simula/svr_interface.h)
-	target_link_libraries(drv_svr_gl PRIVATE xrt-interfaces_gl aux_math_gl xrt-external-cjson_gl)
+	target_link_libraries(drv_svr_gl PRIVATE xrt-interfaces_gl aux_math_gl xrt-external-cjson_gl Threads::Threads)
 	list(APPEND ENABLED_HEADSET_DRIVERS svr)
 endif()
 

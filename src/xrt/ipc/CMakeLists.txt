@@ -3,6 +3,8 @@
 
 ###
 # Generator
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 foreach(
 	fn
@@ -77,7 +79,7 @@ add_library(
 	)
 target_include_directories(
 	ipc_server_gl
-	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} Threads::Threads
 	PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 	)
 target_link_libraries(ipc_server_gl PRIVATE aux_util_gl ipc_shared_gl)

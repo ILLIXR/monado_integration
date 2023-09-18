@@ -4,6 +4,8 @@
 ###
 # Main code
 #
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads)
 
 add_library(
 	st_oxr_gl STATIC
@@ -114,7 +116,7 @@ target_link_libraries(
 		aux_generated_bindings_gl
 		comp_client_gl
 		aux-includes_gl
-	PUBLIC aux_os_gl
+	PUBLIC aux_os_gl Threads::Threads
 	)
 
 if(XRT_FEATURE_RENDERDOC)
