@@ -31,6 +31,10 @@ if(XRT_BUILD_DRIVER_DAYDREAM)
 endif()
 
 if(XRT_BUILD_DRIVER_DEPTHAI)
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+	find_package(Threads)
+
 	add_library(drv_depthai_gl STATIC depthai/depthai_driver.cpp depthai/depthai_interface.h)
 	target_link_libraries(
 		drv_depthai_gl
@@ -41,6 +45,7 @@ if(XRT_BUILD_DRIVER_DEPTHAI)
 			${OpenCV_LIBRARIES}
 			depthai::core
 			XLink
+			Threads::Threads
 		)
 	target_include_directories(drv_depthai_gl PRIVATE ${OpenCV_INCLUDE_DIRS})
 	list(APPEND ENABLED_DRIVERS depthai)

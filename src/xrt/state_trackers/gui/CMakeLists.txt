@@ -4,6 +4,10 @@
 # c-imgui doesn't do well with IPO - lots of warnings.
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+find_package(Threads)
+
 add_library(
 	st_gui_gl STATIC
 	gui_common.h
@@ -32,6 +36,8 @@ target_link_libraries(
 		aux_ogl_gl
 		drv_includes_gl
 		xrt-external-imgui_gl
+		PUBLIC
+		Threads::Threads
 	)
 target_include_directories(st_gui_gl INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 

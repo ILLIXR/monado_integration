@@ -17,6 +17,10 @@ target_link_libraries(
 target_include_directories(aux_tracking_gl SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})
 
 if(XRT_HAVE_OPENCV)
+	set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+	find_package(Threads)
+
 	target_sources(
 		aux_tracking_gl
 		PRIVATE
@@ -40,7 +44,7 @@ if(XRT_HAVE_OPENCV)
 			t_tracker_psvr.cpp
 		)
 	target_include_directories(aux_tracking_gl SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})
-	target_link_libraries(aux_tracking_gl PUBLIC ${OpenCV_LIBRARIES})
+	target_link_libraries(aux_tracking_gl PUBLIC ${OpenCV_LIBRARIES} Threads::Threads)
 endif()
 
 if(XRT_FEATURE_SLAM)

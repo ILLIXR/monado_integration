@@ -1,6 +1,10 @@
 # Copyright 2019-2022, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+find_package(Threads)
+
 configure_file(
 	"${CMAKE_CURRENT_SOURCE_DIR}/u_git_tag.c.in" "${CMAKE_CURRENT_BINARY_DIR}/u_git_tag.c"
 	@ONLY
@@ -102,7 +106,7 @@ add_library(
 	u_worker.hpp
 	"${CMAKE_CURRENT_BINARY_DIR}/u_git_tag.c"
 	)
-target_link_libraries(aux_util_gl PUBLIC aux-includes_gl xrt-pthreads aux_generated_bindings_gl aux_math_gl)
+target_link_libraries(aux_util_gl PUBLIC aux-includes_gl xrt-pthreads aux_generated_bindings_gl aux_math_gl Threads::Threads)
 
 if(XRT_HAVE_JPEG)
 	target_link_libraries(aux_util_gl PRIVATE ${JPEG_LIBRARIES})
