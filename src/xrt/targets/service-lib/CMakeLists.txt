@@ -1,10 +1,10 @@
 # Copyright 2020, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
-add_library(monado-service_gl MODULE service_target.cpp)
+add_library(monado_gl-service MODULE service_target.cpp)
 
 target_link_libraries(
-	monado-service_gl
+	monado_gl-service
 	PRIVATE
 		aux_util_gl
 		st_prober_gl

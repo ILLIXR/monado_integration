@@ -1,11 +1,11 @@
 # Copyright 2020-2021, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
-add_executable(monado-service_gl main.c)
-add_sanitizers(monado-service_gl)
+add_executable(monado_gl-service_gl main.c)
+add_sanitizers(monado_gl-service_gl)
 
 target_link_libraries(
-	monado-service_gl
+	monado_gl-service
 	PRIVATE
 		aux_util_gl
 		st_prober_gl
@@ -15,7 +15,7 @@ target_link_libraries(
 		oxr_sdl2_gl
 	)
 
-install(TARGETS monado-service_gl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS monado_gl-service RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(XRT_HAVE_SYSTEMD)
 	set(SERVICE_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/monado.in.service")
@@ -24,7 +24,7 @@ if(XRT_HAVE_SYSTEMD)
 	# Generate systemd unit files with absolute path to service
 	# intended for development without installing
 	set(UNIT_NAME monado-dev)
-	set(service_path $<TARGET_FILE:monado-service_gl>)
+	set(service_path $<TARGET_FILE:monado_gl-service>)
 	set(conflicts monado)
 	set(exit_on_disconnect ON)
 	set(extra_desc "in build tree")
@@ -99,9 +99,9 @@ if(XRT_INSTALL_SYSTEMD_UNIT_FILES OR XRT_INSTALL_ABSOLUTE_SYSTEMD_UNIT_FILES)
 endif()
 
 if(XRT_HAVE_SDL2)
-	target_link_libraries(monado-service_gl PRIVATE st_gui_gl xrt-external-imgui-sdl2_gl aux_ogl_gl)
+	target_link_libraries(monado_gl-service PRIVATE st_gui_gl xrt-external-imgui-sdl2_gl aux_ogl_gl)
 
 	if(XRT_BUILD_DRIVER_QWERTY)
-		target_link_libraries(monado-service_gl PRIVATE drv_qwerty_includes_gl)
+		target_link_libraries(monado_gl-service PRIVATE drv_qwerty_includes_gl)
 	endif()
 endif()
