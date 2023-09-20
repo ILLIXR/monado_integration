@@ -1,8 +1,8 @@
 # Copyright 2020-2021, Collabora, Ltd.
 # SPDX-License-Identifier: BSL-1.0
 
-add_executable(monado_gl-service_gl main.c)
-add_sanitizers(monado_gl-service_gl)
+add_executable(monado_gl-service main.c)
+add_sanitizers(monado_gl-service)
 
 target_link_libraries(
 	monado_gl-service
