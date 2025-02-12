@@ -25,9 +25,9 @@ class illixr_plugin : public plugin {
 public:
 	illixr_plugin(std::string name_, phonebook* pb_)
 		: plugin{name_, pb_}
-		, sb{pb->lookup_impl<switchboard>()}
-		, sb_pose{pb->lookup_impl<pose_prediction>()}
-		, _m_clock{pb->lookup_impl<RelativeClock>()}
+		, sb{phonebook_->lookup_impl<switchboard>()}
+		, sb_pose{phonebook_->lookup_impl<pose_prediction>()}
+		, _m_clock{phonebook_->lookup_impl<relative_clock>()}
 		, sb_image_handle{sb->get_writer<image_handle>("image_handle")}
 		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
 		, sb_vsync_estimate{sb->get_writer<switchboard::event_wrapper<time_point>>("vsync_estimate")}
@@ -39,7 +39,7 @@ public:
 
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
-	std::shared_ptr<RelativeClock> _m_clock;
+	std::shared_ptr<relative_clock> _m_clock;
 	switchboard::writer<image_handle> sb_image_handle;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
 	switchboard::writer<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
