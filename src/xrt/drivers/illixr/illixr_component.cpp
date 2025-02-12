@@ -1,3 +1,4 @@
+#include "illixr/data_format.hpp"
 extern "C" {
 //#include "ogl/ogl_api.h"
 //#include <GLFW/glfw3.h>
@@ -86,7 +87,7 @@ extern "C" struct xrt_pose illixr_read_pose() {
 
 extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, int usage) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-	
+
 	swapchain_usage image_usage;
 	switch (usage) {
 		case 0: {
