@@ -1,4 +1,3 @@
-#include "illixr/data_format.hpp"
 extern "C" {
 //#include "ogl/ogl_api.h"
 //#include <GLFW/glfw3.h>
@@ -14,11 +13,13 @@ extern "C" {
 #include "illixr/plugin.hpp"
 #include "illixr/phonebook.hpp"
 #include "illixr/switchboard.hpp"
-#include "illixr/data_format.hpp"
-#include "illixr/pose_prediction.hpp"
+#include "illixr/data_format/misc.hpp"
+#include "illixr/data_format/pose_prediction.hpp"
+#include "illixr/data_format/frame.hpp"
 #include "illixr/relative_clock.hpp"
 
 using namespace ILLIXR;
+using namespace ILLIXR::data_format;
 
 /// Dummy plugin class for an instance during phonebook registration
 class illixr_plugin : public plugin {
