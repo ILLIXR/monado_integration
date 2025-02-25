@@ -340,6 +340,7 @@ endif()
 
 if(XRT_BUILD_DRIVER_ILLIXR)
 	find_package(spdlog REQUIRED)
+	find_package(Boost REQUIRED COMPONENTS serialization CONFIG)
 	add_library(
 		drv_illixr_gl STATIC
 		illixr/illixr_device.cpp
@@ -348,7 +349,7 @@ if(XRT_BUILD_DRIVER_ILLIXR)
 		illixr/illixr_component.cpp
 		illixr/illixr_component.h
 		)
-	target_link_libraries(drv_illixr_gl PUBLIC ${CMAKE_DL_LIBS} xrt-interfaces_gl aux_util_gl aux_os_gl spdlog::spdlog Threads::Threads)
+	target_link_libraries(drv_illixr_gl PUBLIC ${CMAKE_DL_LIBS} xrt-interfaces_gl aux_util_gl aux_os_gl spdlog::spdlog Threads::Threads Boost::serialization)
 	target_include_directories(drv_illixr_gl PUBLIC ${ILLIXR_PATH})
 	list(APPEND ENABLED_HEADSET_DRIVERS illixr)
 endif()

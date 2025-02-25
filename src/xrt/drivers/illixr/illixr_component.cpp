@@ -13,20 +13,22 @@ extern "C" {
 #include "illixr/plugin.hpp"
 #include "illixr/phonebook.hpp"
 #include "illixr/switchboard.hpp"
-#include "illixr/data_format.hpp"
+#include "illixr/data_format/misc.hpp"
 #include "illixr/pose_prediction.hpp"
+#include "illixr/data_format/frame.hpp"
 #include "illixr/relative_clock.hpp"
 
 using namespace ILLIXR;
+using namespace ILLIXR::data_format;
 
 /// Dummy plugin class for an instance during phonebook registration
 class illixr_plugin : public plugin {
 public:
 	illixr_plugin(std::string name_, phonebook* pb_)
 		: plugin{name_, pb_}
-		, sb{pb->lookup_impl<switchboard>()}
-		, sb_pose{pb->lookup_impl<pose_prediction>()}
-		, _m_clock{pb->lookup_impl<RelativeClock>()}
+		, sb{phonebook_->lookup_impl<switchboard>()}
+		, sb_pose{phonebook_->lookup_impl<pose_prediction>()}
+		, _m_clock{phonebook_->lookup_impl<relative_clock>()}
 		, sb_image_handle{sb->get_writer<image_handle>("image_handle")}
 		, sb_eyebuffer{sb->get_writer<rendered_frame>("eyebuffer")}
 		, sb_vsync_estimate{sb->get_writer<switchboard::event_wrapper<time_point>>("vsync_estimate")}
@@ -38,7 +40,7 @@ public:
 
 	const std::shared_ptr<switchboard> sb;
 	const std::shared_ptr<pose_prediction> sb_pose;
-	std::shared_ptr<RelativeClock> _m_clock;
+	std::shared_ptr<relative_clock> _m_clock;
 	switchboard::writer<image_handle> sb_image_handle;
 	switchboard::writer<rendered_frame> sb_eyebuffer;
 	switchboard::writer<switchboard::event_wrapper<time_point>> sb_vsync_estimate;
@@ -50,9 +52,9 @@ public:
 
 static illixr_plugin* illixr_plugin_obj = nullptr;
 
-extern "C" plugin* illixr_monado_create_plugin(phonebook* pb) {
+extern "C" plugin* illixr_monado_create_plugin(phonebook* phonebook_) {
 	// "borrowed" from common/plugin.hpp PLUGIN_MAIN
-	illixr_plugin_obj = new illixr_plugin {"illixr_plugin", pb};
+	illixr_plugin_obj = new illixr_plugin {"illixr_plugin", phonebook_};
 	illixr_plugin_obj->start();
 	return illixr_plugin_obj;
 }
@@ -86,7 +88,7 @@ extern "C" struct xrt_pose illixr_read_pose() {
 
 extern "C" void illixr_publish_vk_image_handle(int fd, int64_t format, size_t size, uint32_t width, uint32_t height, uint32_t num_images, int usage) {
 	assert(illixr_plugin_obj != nullptr && "illixr_plugin_obj must be initialized first.");
-	
+
 	swapchain_usage image_usage;
 	switch (usage) {
 		case 0: {
@@ -164,7 +166,7 @@ extern "C" void illixr_estimate_vsync_ns(uint64_t estimated_vsync) {
 
 	uint64_t now_ns = os_monotonic_get_ns();
 	duration time_to_vsync = std::chrono::nanoseconds(estimated_vsync - now_ns);
-    illixr_plugin_obj->sb_vsync_estimate.put(illixr_plugin_obj->sb_vsync_estimate.allocate<switchboard::event_wrapper<time_point>>(illixr_plugin_obj->_m_clock->now() + time_to_vsync));
+    illixr_plugin_obj->sb_vsync_estimate.put(illixr_plugin_obj->sb_vsync_estimate.allocate(illixr_plugin_obj->_m_clock->now() + time_to_vsync));
 }
 
 extern "C" int64_t illixr_get_now_ns() {
